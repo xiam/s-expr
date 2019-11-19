@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	wordBreak = []rune{'(', ')', '"', '#', ' ', '\r', '\t', '\f', '\n'}
+	wordBreak = []rune{'(', ')', '"', '#', ' ', '\r', '\t', '\f', '\n', '[', ']'}
 )
 
 type token struct {
@@ -22,6 +22,7 @@ type token struct {
 }
 
 func (t token) String() string {
+	return fmt.Sprintf("%q", t.val)
 	return fmt.Sprintf("%q %d:%d (%s)", t.val, t.col, t.line, tokenName(t.tt))
 }
 
@@ -30,21 +31,26 @@ type lexState func(*lexer) lexState
 type tokenType uint8
 
 const (
-	tokenOpenList tokenType = iota
+	tokenInvalid tokenType = iota
+
+	tokenOpenList
 	tokenCloseList
 	tokenNewLine
 	tokenQuote
 	tokenHash
 	tokenAtomSeparator
 	tokenAtom
+	tokenOpenBracket
+	tokenCloseBracket
 
-	tokenInvalid
 	tokenEOF
 )
 
 var tokenValues = map[tokenType][]rune{
 	tokenOpenList:      []rune{'('},
 	tokenCloseList:     []rune{')'},
+	tokenOpenBracket:   []rune{'['},
+	tokenCloseBracket:  []rune{']'},
 	tokenQuote:         []rune{'"'},
 	tokenHash:          []rune{'#'},
 	tokenNewLine:       []rune{'\n'},
@@ -54,6 +60,8 @@ var tokenValues = map[tokenType][]rune{
 var tokenNames = map[tokenType]string{
 	tokenOpenList:      "[open parenthesis]",
 	tokenCloseList:     "[close parenthesis]",
+	tokenOpenBracket:   "[open bracket]",
+	tokenCloseBracket:  "[close bracket]",
 	tokenQuote:         "[quote]",
 	tokenHash:          "[hash]",
 	tokenNewLine:       "[newline]",
@@ -85,6 +93,8 @@ func isTokenType(tt tokenType) func(r rune) bool {
 var (
 	isOpenList      = isTokenType(tokenOpenList)
 	isCloseList     = isTokenType(tokenCloseList)
+	isOpenBracket   = isTokenType(tokenOpenBracket)
+	isCloseBracket  = isTokenType(tokenCloseBracket)
 	isAtomSeparator = isTokenType(tokenAtomSeparator)
 	isQuote         = isTokenType(tokenQuote)
 	isHash          = isTokenType(tokenHash)
@@ -108,13 +118,16 @@ func newLexer(r io.Reader) *lexer {
 	return &lexer{
 		in:     s.Init(r),
 		tokens: make(chan token),
+		done:   make(chan struct{}),
 		buf:    []rune{},
 	}
 }
 
 type lexer struct {
-	in     *scanner.Scanner
+	in *scanner.Scanner
+
 	tokens chan token
+	done   chan struct{}
 
 	buf  []rune
 	col  uint64
@@ -122,9 +135,28 @@ type lexer struct {
 	pos  uint64
 }
 
+func (lx *lexer) stop() {
+	for {
+		select {
+		case <-lx.tokens:
+			// drain channel
+		default:
+			lx.done <- struct{}{}
+			close(lx.tokens)
+			return
+		}
+	}
+}
+
 func (lx *lexer) run() error {
+
 	for state := lexDefaultState; state != nil; {
-		state = state(lx)
+		select {
+		case <-lx.done:
+			return nil
+		default:
+			state = state(lx)
+		}
 	}
 
 	lx.emit(tokenEOF)
@@ -166,8 +198,6 @@ func (lx *lexer) next() (rune, error) {
 
 func lexDefaultState(lx *lexer) lexState {
 	r, err := lx.next()
-	log.Printf("r: %s, err: %v", string(r), err)
-
 	if err != nil {
 		return lexStateError(err)
 	}
@@ -177,6 +207,16 @@ func lexDefaultState(lx *lexer) lexState {
 		return lexOpenListState
 	case isCloseList(r):
 		return lexCloseListState
+	case isOpenBracket(r):
+		return lexOpenBracketState
+	case isCloseBracket(r):
+		return lexCloseBracketState
+	case isQuote(r):
+		return lexQuote
+	case isHash(r):
+		return lexHash
+	case isNewLine(r):
+		return lexNewLine
 	case isAtomSeparator(r):
 		return lexAtomSeparator
 	default:
@@ -184,6 +224,31 @@ func lexDefaultState(lx *lexer) lexState {
 	}
 
 	panic("unreachable")
+}
+
+func lexQuote(lx *lexer) lexState {
+	lx.emit(tokenQuote)
+	return lexDefaultState
+}
+
+func lexNewLine(lx *lexer) lexState {
+	lx.emit(tokenNewLine)
+	return lexDefaultState
+}
+
+func lexHash(lx *lexer) lexState {
+	lx.emit(tokenHash)
+	return lexDefaultState
+}
+
+func lexOpenBracketState(lx *lexer) lexState {
+	lx.emit(tokenOpenBracket)
+	return lexDefaultState
+}
+
+func lexCloseBracketState(lx *lexer) lexState {
+	lx.emit(tokenCloseBracket)
+	return lexDefaultState
 }
 
 func lexOpenListState(lx *lexer) lexState {
@@ -221,6 +286,7 @@ func lexStateError(err error) lexState {
 		return nil
 	}
 	return func(lx *lexer) lexState {
+		log.Printf("lexer error: %v", err)
 		return nil
 	}
 }
@@ -234,7 +300,6 @@ func tokenize(in []byte) ([]token, error) {
 	errCh := make(chan error)
 
 	lx := newLexer(bytes.NewReader(in))
-
 	go func() {
 		errCh <- lx.run()
 	}()
@@ -242,6 +307,11 @@ func tokenize(in []byte) ([]token, error) {
 	for tok := range lx.tokens {
 		tokens = append(tokens, tok)
 	}
+
 	err := <-errCh
-	return tokens, err
+	if err != nil {
+		return nil, err
+	}
+
+	return tokens, nil
 }

@@ -10,10 +10,6 @@ type Reader struct {
 	r io.Reader
 }
 
-type Node struct {
-	Value string
-}
-
 func Parse(in []byte) (*Node, error) {
 	r := NewReader(bytes.NewReader(in))
 	return r.Parse()
