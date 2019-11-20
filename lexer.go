@@ -9,6 +9,9 @@ import (
 )
 
 var (
+	wordStart = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
+	wordBody  = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
+
 	wordBreak = []rune{'(', ')', '"', '#', ' ', '\r', '\t', '\f', '\n', '[', ']'}
 )
 
@@ -33,40 +36,62 @@ type tokenType uint8
 const (
 	tokenInvalid tokenType = iota
 
-	tokenOpenList
-	tokenCloseList
+	tokenOpenExpression
+	tokenCloseExpression
 	tokenNewLine
 	tokenQuote
 	tokenHash
-	tokenAtomSeparator
+	tokenSeparator
 	tokenAtom
-	tokenOpenBracket
-	tokenCloseBracket
+	tokenInteger
+	tokenFloat
+	tokenString
+	tokenBool
+	tokenNil
+	tokenColon
+	tokenDot
+	tokenBackslash
+	tokenOpenMap
+	tokenCloseMap
+	tokenOpenList
+	tokenCloseList
 
 	tokenEOF
 )
 
 var tokenValues = map[tokenType][]rune{
-	tokenOpenList:      []rune{'('},
-	tokenCloseList:     []rune{')'},
-	tokenOpenBracket:   []rune{'['},
-	tokenCloseBracket:  []rune{']'},
-	tokenQuote:         []rune{'"'},
-	tokenHash:          []rune{'#'},
-	tokenNewLine:       []rune{'\n'},
-	tokenAtomSeparator: []rune{' ', '\r', '\t', '\f', '\n'},
+	tokenOpenMap:         []rune{'{'},
+	tokenCloseMap:        []rune{'}'},
+	tokenOpenExpression:  []rune{'('},
+	tokenCloseExpression: []rune{')'},
+	tokenOpenList:        []rune{'['},
+	tokenCloseList:       []rune{']'},
+	tokenQuote:           []rune{'"'},
+	tokenDot:             []rune{'.'},
+	tokenColon:           []rune{':'},
+	tokenBackslash:       []rune{'\\'},
+	tokenHash:            []rune{'#'},
+	tokenNewLine:         []rune{'\n'},
+	tokenSeparator:       []rune{' ', '\r', '\t', '\f', '\n'},
 }
 
 var tokenNames = map[tokenType]string{
-	tokenOpenList:      "[open parenthesis]",
-	tokenCloseList:     "[close parenthesis]",
-	tokenOpenBracket:   "[open bracket]",
-	tokenCloseBracket:  "[close bracket]",
-	tokenQuote:         "[quote]",
-	tokenHash:          "[hash]",
-	tokenNewLine:       "[newline]",
-	tokenAtom:          "[atom]",
-	tokenAtomSeparator: "[atom separator]",
+	tokenOpenExpression:  "[open expr]",
+	tokenCloseExpression: "[close expr]",
+	tokenOpenList:        "[open list]",
+	tokenCloseList:       "[close list]",
+	tokenOpenMap:         "[open map]",
+	tokenCloseMap:        "[close map]",
+	tokenQuote:           "[quote]",
+	tokenHash:            "[hash]",
+	tokenNewLine:         "[newline]",
+	tokenAtom:            "[atom]",
+	tokenDot:             "[dot]",
+	tokenString:          "[string]",
+	tokenBool:            "[bool]",
+	tokenInteger:         "[integer]",
+	tokenFloat:           "[float]",
+	tokenSeparator:       "[separator]",
 
 	tokenEOF:     "[EOF]",
 	tokenInvalid: "[invalid]",
@@ -91,14 +116,17 @@ func isTokenType(tt tokenType) func(r rune) bool {
 }
 
 var (
-	isOpenList      = isTokenType(tokenOpenList)
-	isCloseList     = isTokenType(tokenCloseList)
-	isOpenBracket   = isTokenType(tokenOpenBracket)
-	isCloseBracket  = isTokenType(tokenCloseBracket)
-	isAtomSeparator = isTokenType(tokenAtomSeparator)
-	isQuote         = isTokenType(tokenQuote)
-	isHash          = isTokenType(tokenHash)
-	isNewLine       = isTokenType(tokenNewLine)
+	isOpenExpression  = isTokenType(tokenOpenExpression)
+	isCloseExpression = isTokenType(tokenCloseExpression)
+	isOpenList        = isTokenType(tokenOpenList)
+	isCloseList       = isTokenType(tokenCloseList)
+	isOpenMap         = isTokenType(tokenOpenMap)
+	isCloseMap        = isTokenType(tokenCloseMap)
+	isSeparator       = isTokenType(tokenSeparator)
+	isQuote           = isTokenType(tokenQuote)
+	isHash            = isTokenType(tokenHash)
+	isDot             = isTokenType(tokenDot)
+	isNewLine         = isTokenType(tokenNewLine)
 )
 
 func isWordBreak(r rune) bool {
@@ -203,22 +231,22 @@ func lexDefaultState(lx *lexer) lexState {
 	}
 
 	switch {
+	case isOpenExpression(r):
+		return lexOpenExpressionState
+	case isCloseExpression(r):
+		return lexCloseExpressionState
 	case isOpenList(r):
 		return lexOpenListState
 	case isCloseList(r):
 		return lexCloseListState
-	case isOpenBracket(r):
-		return lexOpenBracketState
-	case isCloseBracket(r):
-		return lexCloseBracketState
 	case isQuote(r):
 		return lexQuote
 	case isHash(r):
 		return lexHash
 	case isNewLine(r):
 		return lexNewLine
-	case isAtomSeparator(r):
-		return lexAtomSeparator
+	case isSeparator(r):
+		return lexSeparator
 	default:
 		return lexAtom
 	}
@@ -241,16 +269,6 @@ func lexHash(lx *lexer) lexState {
 	return lexDefaultState
 }
 
-func lexOpenBracketState(lx *lexer) lexState {
-	lx.emit(tokenOpenBracket)
-	return lexDefaultState
-}
-
-func lexCloseBracketState(lx *lexer) lexState {
-	lx.emit(tokenCloseBracket)
-	return lexDefaultState
-}
-
 func lexOpenListState(lx *lexer) lexState {
 	lx.emit(tokenOpenList)
 	return lexDefaultState
@@ -261,13 +279,23 @@ func lexCloseListState(lx *lexer) lexState {
 	return lexDefaultState
 }
 
-func lexAtomSeparator(lx *lexer) lexState {
-	for isAtomSeparator(lx.peek()) {
+func lexOpenExpressionState(lx *lexer) lexState {
+	lx.emit(tokenOpenExpression)
+	return lexDefaultState
+}
+
+func lexCloseExpressionState(lx *lexer) lexState {
+	lx.emit(tokenCloseExpression)
+	return lexDefaultState
+}
+
+func lexSeparator(lx *lexer) lexState {
+	for isSeparator(lx.peek()) {
 		if _, err := lx.next(); err != nil {
 			return lexStateError(err)
 		}
 	}
-	lx.emit(tokenAtomSeparator)
+	lx.emit(tokenSeparator)
 	return lexDefaultState
 }
 
