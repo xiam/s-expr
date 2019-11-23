@@ -8,25 +8,17 @@ import (
 	"text/scanner"
 )
 
-var (
-	wordStart = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
-	wordBody  = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
-
-	wordBreak = []rune{'(', ')', '"', '#', ' ', '\r', '\t', '\f', '\n', '[', ']'}
-)
-
 type token struct {
-	tt  tokenType
-	val string
+	tt   tokenType
+	text string
 
-	col  uint64
-	line uint64
-	pos  uint64
+	col  int
+	line int
 }
 
 func (t token) String() string {
-	return fmt.Sprintf("%q", t.val)
-	return fmt.Sprintf("%q %d:%d (%s)", t.val, t.col, t.line, tokenName(t.tt))
+	return fmt.Sprintf("%q", t.text)
+	return fmt.Sprintf("%q %d:%d (%s)", t.text, t.col, t.line, tokenName(t.tt))
 }
 
 type lexState func(*lexer) lexState
@@ -36,65 +28,91 @@ type tokenType uint8
 const (
 	tokenInvalid tokenType = iota
 
+	tokenOpenList
+	tokenCloseList
+
+	tokenOpenMap
+	tokenCloseMap
+
 	tokenOpenExpression
 	tokenCloseExpression
+	tokenExpression
+
 	tokenNewLine
 	tokenQuote
 	tokenHash
-	tokenSeparator
-	tokenAtom
+	tokenWhitespace
+
+	tokenWord
 	tokenInteger
-	tokenFloat
+	tokenSymbol
 	tokenString
-	tokenBool
-	tokenNil
+
 	tokenColon
+	tokenStar
+	tokenPercent
 	tokenDot
+
 	tokenBackslash
-	tokenOpenMap
-	tokenCloseMap
-	tokenOpenList
-	tokenCloseList
 
 	tokenEOF
 )
 
 var tokenValues = map[tokenType][]rune{
-	tokenOpenMap:         []rune{'{'},
-	tokenCloseMap:        []rune{'}'},
+	tokenOpenList:  []rune{'['},
+	tokenCloseList: []rune{']'},
+
+	tokenOpenMap:  []rune{'{'},
+	tokenCloseMap: []rune{'}'},
+
 	tokenOpenExpression:  []rune{'('},
 	tokenCloseExpression: []rune{')'},
-	tokenOpenList:        []rune{'['},
-	tokenCloseList:       []rune{']'},
-	tokenQuote:           []rune{'"'},
-	tokenDot:             []rune{'.'},
-	tokenColon:           []rune{':'},
-	tokenBackslash:       []rune{'\\'},
-	tokenHash:            []rune{'#'},
-	tokenNewLine:         []rune{'\n'},
-	tokenSeparator:       []rune{' ', '\r', '\t', '\f', '\n'},
+
+	tokenNewLine:    []rune{'\n'},
+	tokenQuote:      []rune{'"'},
+	tokenHash:       []rune{'#'},
+	tokenWhitespace: []rune(" \f\t\r"),
+
+	tokenWord:    []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@_"),
+	tokenInteger: []rune("0123456789"),
+
+	tokenColon:   []rune{':'},
+	tokenStar:    []rune{'*'},
+	tokenPercent: []rune{'%'},
+	tokenDot:     []rune{'.'},
+
+	tokenBackslash: []rune{'\\'},
 }
 
 var tokenNames = map[tokenType]string{
+	tokenInvalid: "[invalid]",
+
+	tokenOpenList:  "[open list]",
+	tokenCloseList: "[close list]",
+
+	tokenOpenMap:  "[open map]",
+	tokenCloseMap: "[close map]",
+
 	tokenOpenExpression:  "[open expr]",
 	tokenCloseExpression: "[close expr]",
-	tokenOpenList:        "[open list]",
-	tokenCloseList:       "[close list]",
-	tokenOpenMap:         "[open map]",
-	tokenCloseMap:        "[close map]",
-	tokenQuote:           "[quote]",
-	tokenHash:            "[hash]",
-	tokenNewLine:         "[newline]",
-	tokenAtom:            "[atom]",
-	tokenDot:             "[dot]",
-	tokenString:          "[string]",
-	tokenBool:            "[bool]",
-	tokenInteger:         "[integer]",
-	tokenFloat:           "[float]",
-	tokenSeparator:       "[separator]",
+	tokenExpression:      "[expression]",
 
-	tokenEOF:     "[EOF]",
-	tokenInvalid: "[invalid]",
+	tokenNewLine:    "[newline]",
+	tokenQuote:      "[quote]",
+	tokenHash:       "[hash]",
+	tokenWhitespace: "[separator]",
+
+	tokenWord:    "[word]",
+	tokenInteger: "[integer]",
+
+	tokenColon:   "[colon]",
+	tokenStar:    "[star]",
+	tokenPercent: "[percent]",
+	tokenDot:     "[dot]",
+
+	tokenBackslash: "[backslash]",
+
+	tokenEOF: "[EOF]",
 }
 
 func tokenName(tt tokenType) string {
@@ -116,27 +134,30 @@ func isTokenType(tt tokenType) func(r rune) bool {
 }
 
 var (
+	isOpenList  = isTokenType(tokenOpenList)
+	isCloseList = isTokenType(tokenCloseList)
+
+	isOpenMap  = isTokenType(tokenOpenMap)
+	isCloseMap = isTokenType(tokenCloseMap)
+
 	isOpenExpression  = isTokenType(tokenOpenExpression)
 	isCloseExpression = isTokenType(tokenCloseExpression)
-	isOpenList        = isTokenType(tokenOpenList)
-	isCloseList       = isTokenType(tokenCloseList)
-	isOpenMap         = isTokenType(tokenOpenMap)
-	isCloseMap        = isTokenType(tokenCloseMap)
-	isSeparator       = isTokenType(tokenSeparator)
-	isQuote           = isTokenType(tokenQuote)
-	isHash            = isTokenType(tokenHash)
-	isDot             = isTokenType(tokenDot)
-	isNewLine         = isTokenType(tokenNewLine)
-)
 
-func isWordBreak(r rune) bool {
-	for _, v := range wordBreak {
-		if v == r {
-			return true
-		}
-	}
-	return false
-}
+	isNewLine    = isTokenType(tokenNewLine)
+	isQuote      = isTokenType(tokenQuote)
+	isHash       = isTokenType(tokenHash)
+	isWhitespace = isTokenType(tokenWhitespace)
+
+	isWord    = isTokenType(tokenWord)
+	isInteger = isTokenType(tokenInteger)
+
+	isColon   = isTokenType(tokenColon)
+	isStar    = isTokenType(tokenStar)
+	isPercent = isTokenType(tokenPercent)
+	isDot     = isTokenType(tokenDot)
+
+	isBackslash = isTokenType(tokenBackslash)
+)
 
 func newLexer(r io.Reader) *lexer {
 	s := &scanner.Scanner{
@@ -155,12 +176,14 @@ type lexer struct {
 	in *scanner.Scanner
 
 	tokens chan token
-	done   chan struct{}
 
-	buf  []rune
-	col  uint64
-	line uint64
-	pos  uint64
+	done chan struct{}
+
+	buf []rune
+
+	start  int
+	offset int
+	lines  int
 }
 
 func (lx *lexer) stop() {
@@ -195,13 +218,21 @@ func (lx *lexer) run() error {
 
 func (lx *lexer) emit(tt tokenType) {
 	lx.tokens <- token{
-		val:  string(lx.buf),
 		tt:   tt,
-		col:  lx.col,
-		line: lx.line,
-		pos:  lx.pos,
+		text: string(lx.buf),
+
+		col:  lx.start + 1,
+		line: lx.lines + 1,
 	}
-	lx.buf = []rune{}
+
+	lx.start = lx.offset
+	lx.buf = lx.buf[0:0]
+
+	if tt == tokenNewLine {
+		lx.lines++
+		lx.start = 0
+		lx.offset = 0
+	}
 }
 
 func (lx *lexer) peek() rune {
@@ -209,18 +240,14 @@ func (lx *lexer) peek() rune {
 }
 
 func (lx *lexer) next() (rune, error) {
+	lx.offset++
+
 	r := lx.in.Next()
 	if r == scanner.EOF {
 		return rune(0), io.EOF
 	}
-	lx.buf = append(lx.buf, r)
 
-	lx.pos++
-	if lx.line == 0 || isNewLine(r) {
-		lx.col = 0
-		lx.line++
-	}
-	lx.col++
+	lx.buf = append(lx.buf, r)
 	return r, nil
 }
 
@@ -231,82 +258,85 @@ func lexDefaultState(lx *lexer) lexState {
 	}
 
 	switch {
-	case isOpenExpression(r):
-		return lexOpenExpressionState
-	case isCloseExpression(r):
-		return lexCloseExpressionState
+
 	case isOpenList(r):
-		return lexOpenListState
+		return lexEmit(tokenOpenList)
 	case isCloseList(r):
-		return lexCloseListState
+		return lexEmit(tokenCloseList)
+
+	case isOpenMap(r):
+		return lexEmit(tokenOpenMap)
+	case isCloseMap(r):
+		return lexEmit(tokenCloseMap)
+
+	case isOpenExpression(r):
+		return lexEmit(tokenOpenExpression)
+	case isCloseExpression(r):
+		return lexEmit(tokenCloseExpression)
+
 	case isQuote(r):
-		return lexQuote
+		return lexEmit(tokenQuote)
 	case isHash(r):
-		return lexHash
+		return lexEmit(tokenHash)
 	case isNewLine(r):
-		return lexNewLine
-	case isSeparator(r):
-		return lexSeparator
+		return lexEmit(tokenNewLine)
+	case isWhitespace(r):
+		return lexCollectStream(tokenWhitespace)
+
+	case isWord(r):
+		return lexCollectStream(tokenWord)
+	case isInteger(r):
+		return lexCollectStream(tokenInteger)
+
+	case isColon(r):
+		return lexEmit(tokenColon)
+	case isStar(r):
+		return lexEmit(tokenStar)
+	case isPercent(r):
+		return lexEmit(tokenPercent)
+	case isDot(r):
+		return lexEmit(tokenDot)
+	case isBackslash(r):
+		return lexEmit(tokenBackslash)
+
 	default:
-		return lexAtom
+		return lexString
+
 	}
 
 	panic("unreachable")
 }
 
-func lexQuote(lx *lexer) lexState {
-	lx.emit(tokenQuote)
-	return lexDefaultState
-}
-
-func lexNewLine(lx *lexer) lexState {
-	lx.emit(tokenNewLine)
-	return lexDefaultState
-}
-
-func lexHash(lx *lexer) lexState {
-	lx.emit(tokenHash)
-	return lexDefaultState
-}
-
-func lexOpenListState(lx *lexer) lexState {
-	lx.emit(tokenOpenList)
-	return lexDefaultState
-}
-
-func lexCloseListState(lx *lexer) lexState {
-	lx.emit(tokenCloseList)
-	return lexDefaultState
-}
-
-func lexOpenExpressionState(lx *lexer) lexState {
-	lx.emit(tokenOpenExpression)
-	return lexDefaultState
-}
-
-func lexCloseExpressionState(lx *lexer) lexState {
-	lx.emit(tokenCloseExpression)
-	return lexDefaultState
-}
-
-func lexSeparator(lx *lexer) lexState {
-	for isSeparator(lx.peek()) {
+func lexString(lx *lexer) lexState {
+	for {
+		p := lx.peek()
+		if isWhitespace(p) || isNewLine(p) {
+			break
+		}
 		if _, err := lx.next(); err != nil {
 			return lexStateError(err)
 		}
 	}
-	lx.emit(tokenSeparator)
+	lx.emit(tokenString)
 	return lexDefaultState
 }
 
-func lexAtom(lx *lexer) lexState {
-	for !isWordBreak(lx.peek()) {
-		if _, err := lx.next(); err != nil {
-			return lexStateError(err)
-		}
+func lexEmit(tt tokenType) lexState {
+	return func(lx *lexer) lexState {
+		lx.emit(tt)
+		return lexDefaultState
 	}
-	lx.emit(tokenAtom)
-	return lexDefaultState
+}
+
+func lexCollectStream(tt tokenType) lexState {
+	return func(lx *lexer) lexState {
+		for (isTokenType(tt))(lx.peek()) {
+			if _, err := lx.next(); err != nil {
+				return lexStateError(err)
+			}
+		}
+		return lexEmit(tt)
+	}
 }
 
 func lexStateError(err error) lexState {
