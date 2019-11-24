@@ -17,7 +17,7 @@ type token struct {
 }
 
 func (t token) String() string {
-	return fmt.Sprintf("%q", t.text)
+	return fmt.Sprintf("%q (%v) %d:%d", t.text, tokenName(t.tt), t.line, t.col)
 	return fmt.Sprintf("%q %d:%d (%s)", t.text, t.col, t.line, tokenName(t.tt))
 }
 
@@ -109,6 +109,7 @@ var tokenNames = map[tokenType]string{
 	tokenStar:    "[star]",
 	tokenPercent: "[percent]",
 	tokenDot:     "[dot]",
+	tokenString:  "[string]",
 
 	tokenBackslash: "[backslash]",
 
@@ -177,7 +178,8 @@ type lexer struct {
 
 	tokens chan token
 
-	done chan struct{}
+	done    chan struct{}
+	lastErr error
 
 	buf []rune
 
@@ -210,10 +212,13 @@ func (lx *lexer) run() error {
 		}
 	}
 
-	lx.emit(tokenEOF)
+	if lx.lastErr == nil {
+		lx.emit(tokenEOF)
+	}
+
 	close(lx.tokens)
 
-	return nil
+	return lx.lastErr
 }
 
 func (lx *lexer) emit(tt tokenType) {
@@ -345,6 +350,7 @@ func lexStateError(err error) lexState {
 	}
 	return func(lx *lexer) lexState {
 		log.Printf("lexer error: %v", err)
+		lx.lastErr = err
 		return nil
 	}
 }
@@ -355,21 +361,21 @@ func lexStateEOF(lx *lexer) lexState {
 
 func tokenize(in []byte) ([]token, error) {
 	tokens := []token{}
-	errCh := make(chan error)
+	done := make(chan struct{})
 
 	lx := newLexer(bytes.NewReader(in))
+
 	go func() {
-		errCh <- lx.run()
+		for tok := range lx.tokens {
+			tokens = append(tokens, tok)
+		}
+		done <- struct{}{}
 	}()
 
-	for tok := range lx.tokens {
-		tokens = append(tokens, tok)
-	}
-
-	err := <-errCh
-	if err != nil {
+	if err := lx.run(); err != nil {
 		return nil, err
 	}
 
+	<-done
 	return tokens, nil
 }

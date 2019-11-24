@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"strings"
 )
 
@@ -21,26 +22,117 @@ type parserState func(p *parser) parserState
 type NodeType uint8
 
 const (
-	NodeTypeList NodeType = iota
-	NodeTypeArray
+	NodeTypeExpression NodeType = iota
+	NodeTypeList
 	NodeTypeAtom
+	NodeTypeMap
 )
 
 var nodeTypeName = map[NodeType]string{
-	NodeTypeList:  "list",
-	NodeTypeArray: "array",
-	NodeTypeAtom:  "atom",
+	NodeTypeExpression: "expression",
+	NodeTypeList:       "list",
+	NodeTypeMap:        "map",
+	NodeTypeAtom:       "atom",
 }
 
 type Node struct {
 	Type     NodeType
 	Value    interface{}
 	Children []*Node
+
+	token *token
+
+	child chan *Node
+}
+
+func NewNode(tok *token, value interface{}) (*Node, error) {
+	value, err := NewValue(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Node{
+		Type:  NodeTypeAtom,
+		Value: value,
+		token: tok,
+	}, nil
+}
+
+func NewExpressionNode(tok *token) *Node {
+	return &Node{
+		Type:     NodeTypeExpression,
+		Children: []*Node{},
+
+		token: tok,
+	}
+}
+
+func NewMapNode(tok *token) *Node {
+	return &Node{
+		Type:     NodeTypeMap,
+		Children: []*Node{},
+
+		token: tok,
+	}
+}
+
+func NewListNode(tok *token) *Node {
+	return &Node{
+		Type:     NodeTypeList,
+		Children: []*Node{},
+
+		token: tok,
+	}
+}
+
+func (n *Node) push(node *Node) {
+	n.Children = append(n.Children, node)
+}
+
+func (n *Node) NewExpression(tok *token) *Node {
+	node := NewExpressionNode(tok)
+	n.Children = append(n.Children, node)
+	return node
+}
+
+func (n *Node) NewList(tok *token) *Node {
+	node := NewListNode(tok)
+	n.Children = append(n.Children, node)
+	return node
+}
+
+func (n *Node) NewMap(tok *token) *Node {
+	node := NewMapNode(tok)
+	n.Children = append(n.Children, node)
+	return node
+}
+
+func (n *Node) Serve() {
+	n.child = make(chan *Node)
+
+	go func() {
+		defer n.Close()
+		for i := range n.Children {
+			n.child <- n.Children[i]
+		}
+	}()
+}
+
+func (n *Node) Close() {
+	close(n.child)
+}
+
+func (n *Node) Next() *Node {
+	node, ok := <-n.child
+	if !ok {
+		return nil
+	}
+	return node
 }
 
 func (n Node) String() string {
 	switch n.Type {
-	case NodeTypeList, NodeTypeArray:
+	case NodeTypeExpression, NodeTypeList, NodeTypeMap:
 		return fmt.Sprintf("(%v)[%d]", nodeTypeName[n.Type], len(n.Children))
 	}
 	return fmt.Sprintf("(%v): %v", nodeTypeName[n.Type], n.Value)
@@ -49,12 +141,17 @@ func (n Node) String() string {
 type parser struct {
 	lx   *lexer
 	root *Node
+
+	lastTok *token
+	nextTok *token
+
+	lastErr error
 }
 
 func newParser(r io.Reader) *parser {
 	p := &parser{}
 	p.root = &Node{
-		Type:     NodeTypeList,
+		Type:     NodeTypeExpression,
 		Children: []*Node{},
 	}
 	p.lx = newLexer(r)
@@ -62,27 +159,34 @@ func newParser(r io.Reader) *parser {
 }
 
 func (p *parser) run() error {
-	errCh := make(chan error)
+	//errCh := make(chan error)
 
 	go func() {
-		errCh <- p.lx.run()
+		err := p.lx.run()
+		log.Printf("ERR: %v", err)
+		//errCh <- err
 	}()
 
-	for state := parserDefaultState; state != nil; {
+	for state := parserDefaultState(p); state != nil; {
 		state = state(p)
 	}
 
-	for _ = range p.lx.tokens {
-
-	}
-
 	//p.lx.stop()
-	err := <-errCh
+	/*
+		err := <-errCh
+		if err != nil {
+			return err
+		}
+	*/
 
-	return err
+	return p.lastErr
 }
 
-func (p *parser) next() *token {
+func (p *parser) curr() *token {
+	return p.lastTok
+}
+
+func (p *parser) read() *token {
 	tok, ok := <-p.lx.tokens
 	if ok {
 		return &tok
@@ -90,49 +194,184 @@ func (p *parser) next() *token {
 	return &TokenEOF
 }
 
+func (p *parser) peek() *token {
+	if p.nextTok != nil {
+		return p.nextTok
+	}
+
+	p.nextTok = p.read()
+	return p.nextTok
+}
+
+func (p *parser) next() *token {
+	if p.nextTok != nil {
+		tok := p.nextTok
+		p.lastTok, p.nextTok = tok, nil
+		return tok
+	}
+
+	tok := p.read()
+	p.lastTok, p.nextTok = tok, nil
+	return tok
+}
+
 func parserDefaultState(p *parser) parserState {
+	root := p.root
 	tok := p.next()
 
 	switch tok.tt {
-	case tokenOpenBracket:
-		return parserStateOpenBracket
-	case tokenOpenList:
-		return parserStateOpenList
-	case tokenAtomSeparator, tokenNewLine:
-		// ignore
-		return parserDefaultState
 	case tokenEOF:
 		return nil
+
 	default:
-		return parserErrorState(errUnexpectedToken)
+		if state := parserStateData(root)(p); state != nil {
+			return state
+		}
 	}
 
-	panic("unreachable")
-}
-
-func parserStateCloseList(p *parser) parserState {
 	return parserDefaultState
+
 }
 
 func parserErrorState(err error) parserState {
 	return func(p *parser) parserState {
-		p.lx.stop()
-		log.Printf("err: %v", err)
+		//p.lx.stop()
+		p.lastErr = err
+		log.Printf("err: %v -- %v", err, p.lastTok)
 		return nil
 	}
 }
 
 func mergeTokens(tokens []*token) *token {
-	s := []string{}
+	var firstTok *token
+	var text string
 
+	tt := tokenInvalid
 	for _, tok := range tokens {
-		s = append(s, tok.val)
+		if firstTok == nil {
+			firstTok = tok
+			tt = tok.tt
+		}
+		if tt != tok.tt {
+			tt = tokenString
+		}
+		text = text + tok.text
 	}
 
 	return &token{
-		tt:  tokenAtom,
-		val: strings.Join(s, ""),
+		tt:   tt,
+		text: text,
+
+		col:  firstTok.col,
+		line: firstTok.line,
 	}
+}
+
+func expectTokens(p *parser, tt ...tokenType) ([]*token, error) {
+	tokens := []*token{}
+	for i := range tt {
+		tok := p.next()
+		if tok.tt == tokenEOF {
+			return nil, errUnexpectedEOF
+		}
+		if tok.tt != tt[i] {
+			return nil, errUnexpectedToken
+		}
+		tokens = append(tokens, tok)
+	}
+	return tokens, nil
+}
+
+func parserStateData(root *Node) parserState {
+	return func(p *parser) parserState {
+		tok := p.curr()
+
+		switch tok.tt {
+		case tokenWhitespace, tokenNewLine:
+			// continue
+
+		case tokenQuote:
+			if state := parserStateString(root)(p); state != nil {
+				return state
+			}
+
+		case tokenInteger:
+			if state := parserStateNumeric(root)(p); state != nil {
+				return state
+			}
+
+		case tokenColon:
+			if state := parserStateAtom(root)(p); state != nil {
+				return state
+			}
+
+		case tokenWord:
+			if state := parserStateWord(root)(p); state != nil {
+				return state
+			}
+
+		case tokenHash:
+			if state := parserStateComment(root)(p); state != nil {
+				return state
+			}
+
+		case tokenOpenMap:
+			if state := parserStateOpenMap(root.NewMap(tok))(p); state != nil {
+				return state
+			}
+
+		case tokenOpenList:
+			if state := parserStateOpenList(root.NewList(tok))(p); state != nil {
+				return state
+			}
+
+		case tokenOpenExpression:
+			if state := parserStateOpenExpression(root.NewExpression(tok))(p); state != nil {
+				return state
+			}
+
+		default:
+			return parserErrorState(errUnexpectedToken)
+
+		}
+
+		return nil
+	}
+}
+
+func expectIntegerNode(p *parser) (*Node, error) {
+	curr := p.curr()
+
+	next := p.peek()
+	switch next.tt {
+	case tokenDot:
+		// got a point, this means this is a floating point number
+
+		mantissa, err := expectTokens(p, tokenDot, tokenInteger)
+		if err != nil {
+			return nil, err
+		}
+
+		tok := mergeTokens(append([]*token{curr}, mantissa...))
+
+		f64, err := strconv.ParseFloat(tok.text, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewNode(tok, f64)
+
+	default:
+		// natural end for an integer
+		i64, err := strconv.ParseInt(curr.text, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewNode(curr, i64)
+	}
+
+	panic("unreachable")
 }
 
 func expectString(p *parser) (*token, error) {
@@ -165,131 +404,147 @@ func expectComment(p *parser) (string, error) {
 	}
 }
 
-func expectClosingBracket(p *parser) ([]*Node, error) {
-	nodes := []*Node{}
+func parserStateComment(root *Node) parserState {
+	return func(p *parser) parserState {
+	loop:
+		for {
+			tok := p.next()
+			switch tok.tt {
+			case tokenEOF, tokenNewLine:
+				break loop
+			}
+		}
+		return nil
+	}
+}
 
-loop:
-	for {
+func parserStateString(root *Node) parserState {
+	return func(p *parser) parserState {
+		tokens := []*token{}
+
+	loop:
+		for {
+			tok := p.next()
+			switch tok.tt {
+			case tokenQuote:
+				break loop
+
+			case tokenEOF:
+				return parserErrorState(errUnexpectedEOF)
+
+			default:
+				tokens = append(tokens, tok)
+			}
+		}
+
+		tok := mergeTokens(tokens)
+
+		node, err := NewNode(tok, tok.text)
+		if err != nil {
+			return parserErrorState(errUnexpectedEOF)
+		}
+
+		root.push(node)
+		return nil
+	}
+}
+
+func parserStateNumeric(root *Node) parserState {
+	return func(p *parser) parserState {
+		node, err := expectIntegerNode(p)
+		if err != nil {
+			return parserErrorState(err)
+		}
+		root.push(node)
+		return nil
+	}
+}
+
+func parserStateWord(root *Node) parserState {
+	return func(p *parser) parserState {
+		curr := p.curr()
+
+		node, err := NewNode(curr, curr.text)
+		if err != nil {
+			return parserErrorState(err)
+		}
+		root.push(node)
+
+		return nil
+	}
+}
+
+func parserStateAtom(root *Node) parserState {
+	return func(p *parser) parserState {
+		curr := p.curr()
+
+		atomName, err := expectTokens(p, tokenWord)
+		if err != nil {
+			return parserErrorState(err)
+		}
+
+		tok := mergeTokens(append([]*token{curr}, atomName...))
+		node, err := NewNode(tok, tok.text)
+		if err != nil {
+			return parserErrorState(err)
+		}
+		root.push(node)
+		return nil
+	}
+}
+
+func parserStateOpenMap(root *Node) parserState {
+	return func(p *parser) parserState {
 		tok := p.next()
 
 		switch tok.tt {
-		case tokenHash:
-			if _, err := expectComment(p); err != nil {
-				return nil, err
-			}
-		case tokenOpenBracket:
-			children, err := expectClosingBracket(p)
-			if err != nil {
-				return nil, err
-			}
-			nodes = append(nodes, &Node{
-				Type:     NodeTypeArray,
-				Children: children,
-			})
-		case tokenCloseBracket:
-			break loop
-		case tokenAtomSeparator, tokenNewLine:
-			// ignore
-		case tokenQuote:
-			// collect
-			tok, err := expectString(p)
-			if err != nil {
-				return nil, err
-			}
-			nodes = append(nodes, &Node{
-				Type:  NodeTypeAtom,
-				Value: tok.val,
-			})
-		case tokenAtom, tokenOpenList, tokenCloseList:
-			nodes = append(nodes, &Node{
-				Type:  NodeTypeAtom,
-				Value: tok.val,
-			})
-		default:
-			return nil, fmt.Errorf("unexpected token %v", tok)
-		}
-	}
+		case tokenEOF:
+			return parserErrorState(errUnexpectedEOF)
 
-	return nodes, nil
+		default:
+			if state := parserStateData(root)(p); state != nil {
+				return nil
+			}
+		}
+
+		return parserStateOpenMap(root)(p)
+	}
 }
 
-func expectDelimiter(p *parser) ([]*Node, error) {
-	nodes := []*Node{}
-
-loop:
-	for {
+func parserStateOpenExpression(root *Node) parserState {
+	return func(p *parser) parserState {
 		tok := p.next()
 
 		switch tok.tt {
-		case tokenOpenBracket:
-			children, err := expectClosingBracket(p)
-			if err != nil {
-				return nil, err
-			}
-			nodes = append(nodes, &Node{
-				Type:     NodeTypeArray,
-				Children: children,
-			})
-		case tokenOpenList:
-			children, err := expectDelimiter(p)
-			if err != nil {
-				return nil, err
-			}
-			nodes = append(nodes, &Node{
-				Type:     NodeTypeList,
-				Children: children,
-			})
-		case tokenCloseList:
-			break loop
-		case tokenAtomSeparator, tokenNewLine:
-			// ignore
-		case tokenQuote:
-			// collect
-			tok, err := expectString(p)
-			if err != nil {
-				return nil, err
-			}
-			nodes = append(nodes, &Node{
-				Type:  NodeTypeAtom,
-				Value: tok.val,
-			})
-		case tokenAtom:
-			nodes = append(nodes, &Node{
-				Type:  NodeTypeAtom,
-				Value: tok.val,
-			})
+		case tokenEOF:
+			return parserErrorState(errUnexpectedEOF)
+
 		default:
-			return nil, fmt.Errorf("unexpected token %v", tok)
+			if state := parserStateData(root)(p); state != nil {
+				return nil
+			}
 		}
-	}
 
-	return nodes, nil
+		return parserStateOpenExpression(root)(p)
+	}
 }
 
-func parserStateOpenBracket(p *parser) parserState {
-	nodes, err := expectClosingBracket(p)
-	if err != nil {
-		return parserErrorState(err)
+func parserStateOpenList(root *Node) parserState {
+	return func(p *parser) parserState {
+		tok := p.next()
+
+		switch tok.tt {
+		case tokenEOF:
+			return parserErrorState(errUnexpectedEOF)
+
+		default:
+			if state := parserStateData(root)(p); state != nil {
+				return nil
+			}
+		}
+
+		return parserStateOpenList(root)(p)
 	}
-
-	p.root.Children = append(p.root.Children, &Node{
-		Type:     NodeTypeArray,
-		Children: nodes,
-	})
-	return parserDefaultState
-}
-
-func parserStateOpenList(p *parser) parserState {
-	nodes, err := expectDelimiter(p)
-	if err != nil {
-		return parserErrorState(err)
-	}
-
-	p.root.Children = append(p.root.Children, &Node{
-		Type:     NodeTypeList,
-		Children: nodes,
-	})
-	return parserDefaultState
 }
 
 func parse(in []byte) (*Node, error) {
@@ -300,22 +555,73 @@ func parse(in []byte) (*Node, error) {
 		return nil, err
 	}
 
-	printNodes(p.root.Children, 0)
-
 	return p.root, nil
 }
 
-func printNodes(nodes []*Node, level int) {
-	for _, node := range nodes {
-		indent := strings.Repeat("\t", level)
-		switch node.Type {
-		case NodeTypeList, NodeTypeArray:
-			fmt.Printf("%s(%s):\n", indent, nodeTypeName[node.Type])
-			printNodes(node.Children, level+1)
-		case NodeTypeAtom:
-			fmt.Printf("%s(%s): %#v\n", indent, nodeTypeName[node.Type], node.Value)
-		default:
-			panic("unknown node type")
-		}
+func printNode(node *Node) {
+	printNodeLevel(node, 0)
+}
+
+func compileNode(node *Node) []byte {
+	return compileNodeLevel(node, 0)
+}
+
+func compileNodeLevel(node *Node, level int) []byte {
+	if node == nil {
+		return []byte(":nil")
 	}
+	switch node.Type {
+	case NodeTypeMap:
+		nodes := []string{}
+		for i := range node.Children {
+			nodes = append(nodes, string(compileNodeLevel(node.Children[i], level+1)))
+		}
+		return []byte(fmt.Sprintf("{%s}", strings.Join(nodes, " ")))
+
+	case NodeTypeList:
+		nodes := []string{}
+		for i := range node.Children {
+			nodes = append(nodes, string(compileNodeLevel(node.Children[i], level+1)))
+		}
+		return []byte(fmt.Sprintf("[%s]", strings.Join(nodes, " ")))
+
+	case NodeTypeExpression:
+		nodes := []string{}
+		for i := range node.Children {
+			nodes = append(nodes, string(compileNodeLevel(node.Children[i], level+1)))
+		}
+		return []byte(fmt.Sprintf("(%s)", strings.Join(nodes, " ")))
+
+	case NodeTypeAtom:
+		return []byte(fmt.Sprintf("%v", node.Value))
+	default:
+		panic("unknown node type")
+	}
+}
+
+func printNodeLevel(node *Node, level int) {
+	if node == nil {
+		fmt.Printf(":nil\n")
+		return
+	}
+	indent := strings.Repeat("    ", level)
+	fmt.Printf("%s(%s): ", indent, nodeTypeName[node.Type])
+	switch node.Type {
+
+	case NodeTypeExpression, NodeTypeList, NodeTypeMap:
+		fmt.Printf("(%v)\n", node.token)
+		for i := range node.Children {
+			printNodeLevel(node.Children[i], level+1)
+		}
+
+	case NodeTypeAtom:
+		fmt.Printf("%#v (%v)\n", node.Value, node.token)
+
+	default:
+		panic("unknown node type")
+	}
+}
+
+func parserError(err error, tok *token) error {
+	return fmt.Errorf("%v: %v", err.Error(), tok)
 }

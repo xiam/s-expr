@@ -2,7 +2,7 @@ package sexpr
 
 import (
 	"errors"
-	"fmt"
+	//"fmt"
 	"log"
 )
 
@@ -11,186 +11,231 @@ var (
 	errUndefinedFunction = errors.New("undefined function")
 )
 
-type Function func(*Context) (interface{}, error)
+type symbolTableType uint8
+
+const (
+	symbolTableTypeValue symbolTableType = iota
+	symbolTableTypeDict
+)
+
+type symbolTable struct {
+	t symbolTableType
+	n map[string]*symbolTable
+	v *Value
+}
+
+func (st *symbolTable) Set(name string, value interface{}) error {
+	if st.t != symbolTableTypeDict {
+		return errors.New("not a dictionary")
+	}
+	v, err := NewValue(value)
+	if err != nil {
+		return err
+	}
+	st.n[name] = &symbolTable{t: symbolTableTypeValue, v: v}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (st *symbolTable) Get(name string) (*Value, error) {
+	if st.t != symbolTableTypeDict {
+		return nil, errors.New("not a dictionary")
+	}
+	if v, ok := st.n[name]; ok {
+		if v.t == symbolTableTypeValue {
+			return v.v, nil
+		}
+		return nil, errors.New("key is not a value")
+	}
+	return nil, errors.New("no such key")
+}
+
+type Function func(*Context) (Value, error)
 
 type Context struct {
 	Parent *Context
-	args   chan interface{}
 
-	prefixMap map[string]Function
-	envMap    map[string]interface{}
+	in  chan *Value
+	out chan *Value
+
+	st *symbolTable
 }
 
-func (e *Context) pushArgument(arg interface{}) {
-	log.Printf("#> %v", arg)
-	e.args <- arg
+func (ctx *Context) FanIn(val *Value) {
+	ctx.in <- val
 }
 
-func (e *Context) Close() {
-	close(e.args)
+func (ctx *Context) FanOut(val *Value) {
+	ctx.out <- val
 }
 
-func (e *Context) Argument() (interface{}, error) {
-	log.Printf("moar...")
-	arg, ok := <-e.args
-	if !ok {
-		log.Printf("#< [!]")
-		return nil, errors.New("no such argument")
-	}
-	log.Printf("#< %v", arg)
-	return arg, nil
+func (ctx *Context) Close() {
+	close(ctx.in)
+	close(ctx.out)
 }
 
-func (e *Context) Arguments() ([]interface{}, error) {
-	args := []interface{}{}
-	for {
-		arg, err := e.Argument()
-		if err != nil {
-			break
+func (ctx *Context) Set(name string, value interface{}) error {
+	return ctx.st.Set(name, value)
+}
+
+func (ctx *Context) Get(name string) (*Value, error) {
+	fn, err := ctx.st.Get(name)
+	if err != nil {
+		if ctx.Parent == nil {
+			return nil, errUndefinedFunction
 		}
-		args = append(args, arg)
+		return ctx.Parent.Get(name)
 	}
-	return args, nil
+	return fn, nil
 }
-
-func (e *Context) SetFn(name string, value Function) error {
-	e.prefixMap[name] = value
-	return nil
-}
-
-func (e *Context) GetFn(name string) (Function, error) {
-	if val, ok := e.prefixMap[name]; ok {
-		return val, nil
-	}
-	if e.Parent == nil {
-		return nil, errUndefinedFunction
-	}
-	return e.Parent.GetFn(name)
-}
-
-func (e *Context) Set(name string, value interface{}) error {
-	e.envMap[name] = value
-	return nil
-}
-
-func (e *Context) Get(name string) (interface{}, error) {
-	if value, ok := e.envMap[name]; ok {
-		return value, nil
-	}
-	if e.Parent == nil {
-		return nil, errUndefinedValue
-	}
-	return e.Parent.Get(name)
-}
-
-var (
-	prefixMap = map[string]Function{}
-)
 
 func NewContext(parent *Context) *Context {
 	return &Context{
-		Parent:    parent,
-		args:      make(chan interface{}),
-		prefixMap: make(map[string]Function),
-		envMap:    make(map[string]interface{}),
+		Parent: parent,
+		in:     make(chan *Value),
+		out:    make(chan *Value),
+		st: &symbolTable{
+			t: symbolTableTypeDict,
+			n: make(map[string]*symbolTable),
+		},
 	}
 }
 
 var defaultContext = NewContext(nil)
 
-func RegisterPrefix(name string, fn Function) {
-	defaultContext.SetFn(name, fn)
+func RegisterPrefix(name string, fn Function) error {
+	return defaultContext.Set(name, fn)
 }
 
 func evalContext(ctx *Context, node *Node) error {
 	log.Printf("EVAL-> %v", node)
+	node.Serve()
+	log.Printf("EVAL-1")
 
 	switch node.Type {
-
 	case NodeTypeAtom:
-		log.Printf("PUSHED ARGUMENT")
-		ctx.pushArgument(node.Value)
-
-	case NodeTypeArray:
-		newCtx := NewContext(ctx)
-
-		go func() {
-			defer newCtx.Close()
-			for i := range node.Children {
-				err := evalContext(newCtx, node.Children[i])
-				if err != nil {
-					log.Printf("eval error: %v", err)
-					break
-				}
-			}
-		}()
-
-		args, err := newCtx.Arguments()
-		if err != nil {
-			log.Printf("eval error: %v", err)
-			return err
-		}
-		log.Printf("READ ALL ARGUMENTS")
-		ctx.pushArgument(args)
+		log.Printf("ATOM: %v", node)
 
 	case NodeTypeList:
 		newCtx := NewContext(ctx)
 
-		go func() {
-			defer newCtx.Close()
-			for i := range node.Children {
-				err := evalContext(newCtx, node.Children[i])
-				if err != nil {
-					log.Printf("eval error: %v", err)
-					break
-				}
+		for {
+			nextNode := node.Next()
+			if nextNode == nil {
+				break
 			}
-		}()
-
-		firstAtom, err := newCtx.Argument()
-		if err != nil {
-			return err
+			if err := evalContext(newCtx, nextNode); err != nil {
+				return err
+			}
 		}
 
-		switch expr := firstAtom.(type) {
-		case string:
-			log.Printf("LOOKUP: %v", expr)
-			fn, err := newCtx.GetFn(expr)
-			if err == nil {
-				value, err := fn(newCtx)
-				log.Printf("FN: %v, %v", value, err)
-				if err != nil {
-					return err
-				}
-				ctx.pushArgument(value)
-				return nil
+	case NodeTypeExpression:
+		log.Printf("EXPRE")
+		for {
+			nextNode := node.Next()
+			log.Printf("NEXT: %v", nextNode)
+			if nextNode == nil {
+				break
 			}
-			return fmt.Errorf("undefined expression %v", expr)
-		case bool:
-			if expr {
+			if err := evalContext(ctx, nextNode); err != nil {
+				return err
+			}
+		}
+	default:
+		log.Printf("BREAK")
+	}
+
+	/*
+
+		switch node.Type {
+
+		case NodeTypeAtom:
+			log.Printf("PUSHED ARGUMENT")
+			ctx.pushArgument(node.Value)
+
+		case NodeTypeArray:
+			newCtx := NewContext(ctx)
+
+			go func() {
+				defer newCtx.Close()
+				for i := range node.Children {
+					err := evalContext(newCtx, node.Children[i])
+					if err != nil {
+						log.Printf("eval error: %v", err)
+						break
+					}
+				}
+			}()
+
+			args, err := newCtx.Arguments()
+			if err != nil {
+				log.Printf("eval error: %v", err)
+				return err
+			}
+			log.Printf("READ ALL ARGUMENTS")
+			ctx.pushArgument(args)
+
+		case NodeTypeList:
+			newCtx := NewContext(ctx)
+
+			go func() {
+				defer newCtx.Close()
+				for i := range node.Children {
+					err := evalContext(newCtx, node.Children[i])
+					if err != nil {
+						log.Printf("eval error: %v", err)
+						break
+					}
+				}
+			}()
+
+			firstAtom, err := newCtx.Argument()
+			if err != nil {
+				return err
+			}
+
+			switch expr := firstAtom.(type) {
+			case string:
+				log.Printf("LOOKUP: %v", expr)
+				fn, err := newCtx.GetFn(expr)
+				if err == nil {
+					value, err := fn(newCtx)
+					log.Printf("FN: %v, %v", value, err)
+					if err != nil {
+						return err
+					}
+					ctx.pushArgument(value)
+					return nil
+				}
+				return fmt.Errorf("undefined expression %v", expr)
+			case bool:
+				if expr {
+					args, err := newCtx.Arguments()
+					if err != nil {
+						log.Printf("eval error: %v", err)
+						return nil
+					}
+					ctx.pushArgument(append([]interface{}{firstAtom}, args...))
+				} else {
+					// drain arguments
+					newCtx.Arguments()
+					log.Printf("drained arguments")
+				}
+			default:
 				args, err := newCtx.Arguments()
 				if err != nil {
 					log.Printf("eval error: %v", err)
 					return nil
 				}
 				ctx.pushArgument(append([]interface{}{firstAtom}, args...))
-			} else {
-				// drain arguments
-				newCtx.Arguments()
-				log.Printf("drained arguments")
 			}
-		default:
-			args, err := newCtx.Arguments()
-			if err != nil {
-				log.Printf("eval error: %v", err)
-				return nil
-			}
-			ctx.pushArgument(append([]interface{}{firstAtom}, args...))
-		}
 
-	default:
-		panic("unknown type")
-	}
+		default:
+			panic("unknown type")
+		}
+	*/
 
 	return nil
 }
@@ -198,17 +243,17 @@ func evalContext(ctx *Context, node *Node) error {
 func eval(node *Node) (*Context, error) {
 	newCtx := NewContext(defaultContext)
 
-	go func() {
-		defer newCtx.Close()
+	//go func() {
+	//defer newCtx.Close()
 
-		if err := evalContext(newCtx, node); err != nil {
-			log.Printf("ERR: %v", err)
-			return
-		}
-	}()
+	if err := evalContext(newCtx, node); err != nil {
+		log.Printf("ERR: %v", err)
+		//return
+	}
+	//}()
 
-	args, err := newCtx.Arguments()
-	log.Printf("E.ARGS: %v, E.ERR: %v", args, err)
+	//args, err := newCtx.Arguments()
+	//log.Printf("E.ARGS: %v, E.ERR: %v", args, err)
 
 	return newCtx, nil
 }
