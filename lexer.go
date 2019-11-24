@@ -45,8 +45,8 @@ const (
 
 	tokenWord
 	tokenInteger
-	tokenSymbol
 	tokenString
+	tokenLiteral
 
 	tokenColon
 	tokenStar
@@ -110,6 +110,7 @@ var tokenNames = map[tokenType]string{
 	tokenPercent: "[percent]",
 	tokenDot:     "[dot]",
 	tokenString:  "[string]",
+	tokenLiteral: "[literal]",
 
 	tokenBackslash: "[backslash]",
 

@@ -253,7 +253,7 @@ func mergeTokens(tokens []*token) *token {
 			tt = tok.tt
 		}
 		if tt != tok.tt {
-			tt = tokenString
+			tt = tokenLiteral
 		}
 		text = text + tok.text
 	}
@@ -297,6 +297,11 @@ func parserStateData(root *Node) parserState {
 
 		case tokenInteger:
 			if state := parserStateNumeric(root)(p); state != nil {
+				return state
+			}
+
+		case tokenPercent:
+			if state := parserStateArgument(root)(p); state != nil {
 				return state
 			}
 
@@ -438,12 +443,35 @@ func parserStateString(root *Node) parserState {
 		}
 
 		tok := mergeTokens(tokens)
+		tok.tt = tokenString
 
 		node, err := NewNode(tok, tok.text)
 		if err != nil {
 			return parserErrorState(errUnexpectedEOF)
 		}
 
+		root.push(node)
+		return nil
+	}
+}
+
+func parserStateArgument(root *Node) parserState {
+	return func(p *parser) parserState {
+		curr := p.curr()
+
+		val := p.next()
+		switch val.tt {
+		case tokenInteger, tokenStar:
+			// ok
+		default:
+			return parserErrorState(errUnexpectedToken)
+		}
+
+		tok := mergeTokens(append([]*token{curr}, val))
+		node, err := NewNode(tok, tok.text)
+		if err != nil {
+			return parserErrorState(err)
+		}
 		root.push(node)
 		return nil
 	}
@@ -590,10 +618,17 @@ func compileNodeLevel(node *Node, level int) []byte {
 		for i := range node.Children {
 			nodes = append(nodes, string(compileNodeLevel(node.Children[i], level+1)))
 		}
+		if level == 0 {
+			return []byte(fmt.Sprintf("%s", strings.Join(nodes, " ")))
+		}
 		return []byte(fmt.Sprintf("(%s)", strings.Join(nodes, " ")))
 
 	case NodeTypeAtom:
+		if node.token.tt == tokenString {
+			return []byte(fmt.Sprintf("%q", node.Value))
+		}
 		return []byte(fmt.Sprintf("%v", node.Value))
+
 	default:
 		panic("unknown node type")
 	}

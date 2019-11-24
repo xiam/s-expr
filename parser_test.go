@@ -90,6 +90,15 @@ func TestParser(t *testing.T) {
 		{
 			In: `(fn [a b c] [(print a b c)])`,
 		},
+		{
+			In: `{:a 1.11 :b "STRING VALUE"} ()`,
+		},
+		{
+			In: `(fn word [] [(print %1 %2 %3 %*)]) (word "a" "b" "c")`,
+		},
+		{
+			In: `(fn [] [(print %1 %2 %3 %*)])`,
+		},
 	}
 
 	for i := range testCases {
