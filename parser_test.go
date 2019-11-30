@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParser(t *testing.T) {
+func TestParserBuildTree(t *testing.T) {
 	testCases := []struct {
 		In string
 	}{
@@ -112,28 +112,72 @@ func TestParser(t *testing.T) {
 
 		log.Printf("TREE: %#v", root)
 	}
-
 }
 
-func SkipTestParser(t *testing.T) {
+func TestParserEvaluate(t *testing.T) {
+	testCases := []struct {
+		In string
+	}{
+		{
+			In: `1`,
+		},
+		{
+			In: `1 2 3`,
+		},
+		{
+			In: `[]`,
+		},
+		{
+			In: `[1]`,
+		},
+		{
+			In: `[1 2 3]`,
+		},
+		{
+			In: `[1 2 [4 5 [6 7 8]] 3]`,
+		},
+		{
+			In: `{}`,
+		},
+		{
+			In: `{:a 1}`,
+		},
+	}
 
-	//tree, err := parse([]byte(`[] [1 [2 3] [4 5 6 [7 "[" 8 9]]] (fn zero [(set cero 0) (print (get cero))]) (zero) (set anakin [1 2 [3 4] 5]) (set foo 69) (set bar (get foo)) (get foo bar anakin) (+ "1234 567" (- 56 "6" "" 6 (7)) 9 78) (+ 7 7 7 7) () (get foo) (+ 2 3 (+ 5 5)) (1 2 3 4)`))
+	for i := range testCases {
+		root, err := parse([]byte(testCases[i].In))
+		assert.NoError(t, err)
+		assert.NotNil(t, root)
 
-	//tree, err := parse([]byte(`[[123 9 8] 45 6] [1 4 5 655]`))
-	tree, err := parse([]byte(`
-	[1 2 3 [4 5 [6 7 8]]]
-	[foo bar baz]
-	`))
+		printNode(root)
+
+		ctx, err := eval(root)
+		assert.NoError(t, err)
+
+		log.Printf("CTX: %#v", ctx)
+	}
+
 	/*
-		tree, err := parse([]byte(`
+		{
+			ctx, err := eval(tree)
+			assert.NoError(t, err)
 
-		[1 2 3 [4 5 [6 7 8]]]
+			log.Printf("CTX: %#v", ctx)
+		}
 
-		(when
-			((= 1 0) 11)
-			((= 1 1) 99 [110 [121]])
-			((= 2 1) 33)
-		)`))
+			tree, err := parse([]byte(`
+			[1 2 3 [4 5 [6 7 8]]]
+			[foo bar baz]
+			`))
+				tree, err := parse([]byte(`
+
+				[1 2 3 [4 5 [6 7 8]]]
+
+				(when
+					((= 1 0) 11)
+					((= 1 1) 99 [110 [121]])
+					((= 2 1) 33)
+				)`))
 	*/
 
 	/*
@@ -173,7 +217,6 @@ func SkipTestParser(t *testing.T) {
 
 			`))
 	*/
-	assert.NoError(t, err)
 
 	/*
 		RegisterPrefix("set", func(ctx *Context) (interface{}, error) {
@@ -342,11 +385,4 @@ func SkipTestParser(t *testing.T) {
 			return len(args), nil
 		})
 	*/
-
-	{
-		ctx, err := eval(tree)
-		assert.NoError(t, err)
-
-		log.Printf("CTX: %#v", ctx)
-	}
 }

@@ -37,23 +37,21 @@ var nodeTypeName = map[NodeType]string{
 
 type Node struct {
 	Type     NodeType
-	Value    interface{}
+	Value    Value
 	Children []*Node
 
 	token *token
-
-	child chan *Node
 }
 
 func NewNode(tok *token, value interface{}) (*Node, error) {
-	value, err := NewValue(value)
+	v, err := NewValue(value)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Node{
 		Type:  NodeTypeAtom,
-		Value: value,
+		Value: *v,
 		token: tok,
 	}, nil
 }
@@ -104,29 +102,6 @@ func (n *Node) NewList(tok *token) *Node {
 func (n *Node) NewMap(tok *token) *Node {
 	node := NewMapNode(tok)
 	n.Children = append(n.Children, node)
-	return node
-}
-
-func (n *Node) Serve() {
-	n.child = make(chan *Node)
-
-	go func() {
-		defer n.Close()
-		for i := range n.Children {
-			n.child <- n.Children[i]
-		}
-	}()
-}
-
-func (n *Node) Close() {
-	close(n.child)
-}
-
-func (n *Node) Next() *Node {
-	node, ok := <-n.child
-	if !ok {
-		return nil
-	}
 	return node
 }
 
