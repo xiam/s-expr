@@ -140,7 +140,25 @@ func TestParserEvaluate(t *testing.T) {
 			In: `{}`,
 		},
 		{
+			In: `{:a}`,
+		},
+		{
 			In: `{:a 1}`,
+		},
+		{
+			In: `{:a 1 :b 2 :c 3 :e [1 2 3]}`,
+		},
+		{
+			In: `{:a 1 :b 2 :c 3 :e [1 2 3]} [1 2 3] 4 :foo`,
+		},
+		{
+			In: `(1)`,
+		},
+		{
+			In: `(:nil)`,
+		},
+		{
+			In: `(print :hello)`,
 		},
 	}
 

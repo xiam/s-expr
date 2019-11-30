@@ -39,7 +39,7 @@ func NewValue(value interface{}) (*Value, error) {
 		return &Value{v: v, Type: ValueTypeFloat}, nil
 	case bool:
 		return &Value{v: v, Type: ValueTypeBool}, nil
-	case map[Value]Value:
+	case map[Value]*Value:
 		return &Value{v: v, Type: ValueTypeMap}, nil
 	case []Value:
 		return &Value{v: v, Type: ValueTypeList}, nil
@@ -69,8 +69,8 @@ func (v Value) Bool() bool {
 	return v.v.(bool)
 }
 
-func (v Value) Map() map[Value]Value {
-	return v.v.(map[Value]Value)
+func (v Value) Map() map[Value]*Value {
+	return v.v.(map[Value]*Value)
 }
 
 func (v Value) List() []Value {

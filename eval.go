@@ -136,6 +136,45 @@ func evalContext(ctx *Context, node *Node) error {
 		ctx.out <- value
 		return nil
 
+	case NodeTypeMap:
+		log.Printf("MAP: %#v", node)
+
+		newCtx := NewContext(ctx)
+		result := make(chan map[Value]*Value)
+		go func() {
+			out := map[Value]*Value{}
+			var key *Value
+			for value := range newCtx.out {
+				if key == nil {
+					key = value
+					out[*key] = Nil
+				} else {
+					out[*key] = value
+					key = nil
+				}
+			}
+			result <- out
+		}()
+
+		for i := range node.Children {
+			err := evalContext(newCtx, node.Children[i])
+			if err != nil {
+				log.Printf("eval error: %v", err)
+				break
+			}
+		}
+		close(newCtx.out)
+
+		value, err := NewValue(<-result)
+		if err != nil {
+			return err
+		}
+
+		log.Printf("MAP VALUE: %v", value)
+
+		ctx.out <- value
+		return nil
+
 	case NodeTypeExpression:
 		log.Printf("EXPRESSION: %v", node)
 
