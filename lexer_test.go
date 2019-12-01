@@ -1,6 +1,7 @@
 package sexpr
 
 import (
+	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -87,11 +88,18 @@ func TestLexerScanner(t *testing.T) {
 				:c 3
 			}
 		)`,
+
+		`(
+			"hello world!" "brave new " :world
+		)`,
+
+		`(+ 1 2 3 4)`,
 	}
 
 	{
 		for i := range testCases {
 			tokens, err := tokenize([]byte(testCases[i]))
+			log.Printf("tokens: %v", tokens)
 
 			assert.NotNil(t, tokens)
 			assert.NoError(t, err)

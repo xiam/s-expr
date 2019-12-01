@@ -316,7 +316,7 @@ func lexDefaultState(lx *lexer) lexState {
 func lexString(lx *lexer) lexState {
 	for {
 		p := lx.peek()
-		if isWhitespace(p) || isNewLine(p) {
+		if isWhitespace(p) || isNewLine(p) || isQuote(p) {
 			break
 		}
 		if _, err := lx.next(); err != nil {

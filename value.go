@@ -11,6 +11,7 @@ const (
 	ValueTypeNil ValueType = iota
 	ValueTypeBinary
 	ValueTypeString
+	ValueTypeAtom
 	ValueTypeInt
 	ValueTypeFloat
 	ValueTypeBool
@@ -19,13 +20,30 @@ const (
 	ValueTypeFunction
 )
 
+var valueTypes = map[ValueType]string{
+	ValueTypeNil:      "nil",
+	ValueTypeBinary:   "binary",
+	ValueTypeString:   "string",
+	ValueTypeAtom:     "atom",
+	ValueTypeInt:      "int",
+	ValueTypeFloat:    "float",
+	ValueTypeBool:     "bool",
+	ValueTypeMap:      "map",
+	ValueTypeList:     "list",
+	ValueTypeFunction: "function",
+}
+
+func (vt ValueType) String() string {
+	return valueTypes[vt]
+}
+
 type Value struct {
 	v interface{}
 
 	Type ValueType
 }
 
-var Nil = &Value{}
+var Nil = &Value{Type: ValueTypeNil}
 
 func NewValue(value interface{}) (*Value, error) {
 	switch v := value.(type) {
@@ -41,7 +59,7 @@ func NewValue(value interface{}) (*Value, error) {
 		return &Value{v: v, Type: ValueTypeBool}, nil
 	case map[Value]*Value:
 		return &Value{v: v, Type: ValueTypeMap}, nil
-	case []Value:
+	case []*Value:
 		return &Value{v: v, Type: ValueTypeList}, nil
 	case Function:
 		return &Value{v: v, Type: ValueTypeFunction}, nil
@@ -49,12 +67,15 @@ func NewValue(value interface{}) (*Value, error) {
 	return Nil, errors.New("invalid v")
 }
 
-func (v Value) Int() int64 {
-	return v.v.(int64)
+func (v Value) String() string {
+	if s, ok := v.v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v.v)
 }
 
-func (v Value) String() string {
-	return fmt.Sprintf("%v", v.v)
+func (v Value) Int() int64 {
+	return v.v.(int64)
 }
 
 func (v Value) Binary() []byte {
@@ -73,8 +94,8 @@ func (v Value) Map() map[Value]*Value {
 	return v.v.(map[Value]*Value)
 }
 
-func (v Value) List() []Value {
-	return v.v.([]Value)
+func (v Value) List() []*Value {
+	return v.v.([]*Value)
 }
 
 func (v Value) Function() Function {

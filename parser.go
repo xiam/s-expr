@@ -212,7 +212,7 @@ func parserErrorState(err error) parserState {
 	return func(p *parser) parserState {
 		//p.lx.stop()
 		p.lastErr = err
-		log.Printf("err: %v -- %v", err, p.lastTok)
+		log.Fatalf("err: %v -- %v", err, p.lastTok)
 		return nil
 	}
 }
@@ -261,6 +261,7 @@ func parserStateData(root *Node) parserState {
 	return func(p *parser) parserState {
 		tok := p.curr()
 
+		log.Printf("NEXT: %v", tok)
 		switch tok.tt {
 		case tokenWhitespace, tokenNewLine:
 			// continue
@@ -271,9 +272,12 @@ func parserStateData(root *Node) parserState {
 			}
 
 		case tokenInteger:
+			log.Printf("GOT INTEGER")
 			if state := parserStateNumeric(root)(p); state != nil {
+				log.Printf("GOT STATTE")
 				return state
 			}
+			log.Printf("GOT no STATTE")
 
 		case tokenPercent:
 			if state := parserStateArgument(root)(p); state != nil {
@@ -286,6 +290,11 @@ func parserStateData(root *Node) parserState {
 			}
 
 		case tokenWord:
+			if state := parserStateWord(root)(p); state != nil {
+				return state
+			}
+
+		case tokenString:
 			if state := parserStateWord(root)(p); state != nil {
 				return state
 			}
@@ -342,6 +351,7 @@ func expectIntegerNode(p *parser) (*Node, error) {
 		return NewNode(tok, f64)
 
 	default:
+		log.Printf("NATURAL END")
 		// natural end for an integer
 		i64, err := strconv.ParseInt(curr.text, 10, 64)
 		if err != nil {
@@ -399,17 +409,22 @@ func parserStateComment(root *Node) parserState {
 }
 
 func parserStateString(root *Node) parserState {
+	log.Printf("parserStateString")
+
 	return func(p *parser) parserState {
 		tokens := []*token{}
 
 	loop:
 		for {
 			tok := p.next()
+			log.Printf("TOK: %v", tok)
+
 			switch tok.tt {
 			case tokenQuote:
 				break loop
 
 			case tokenEOF:
+				log.Printf("EOF")
 				return parserErrorState(errUnexpectedEOF)
 
 			default:
@@ -419,11 +434,13 @@ func parserStateString(root *Node) parserState {
 
 		tok := mergeTokens(tokens)
 		tok.tt = tokenString
+		log.Printf("MERGED")
 
 		node, err := NewNode(tok, tok.text)
 		if err != nil {
 			return parserErrorState(errUnexpectedEOF)
 		}
+		log.Printf("PUSHED")
 
 		root.push(node)
 		return nil
@@ -491,6 +508,7 @@ func parserStateAtom(root *Node) parserState {
 		if err != nil {
 			return parserErrorState(err)
 		}
+		node.Value.Type = ValueTypeAtom
 		root.push(node)
 		return nil
 	}
@@ -504,9 +522,12 @@ func parserStateOpenMap(root *Node) parserState {
 		case tokenEOF:
 			return parserErrorState(errUnexpectedEOF)
 
+		case tokenCloseMap:
+			return nil
+
 		default:
 			if state := parserStateData(root)(p); state != nil {
-				return nil
+				return state
 			}
 		}
 
@@ -522,9 +543,12 @@ func parserStateOpenExpression(root *Node) parserState {
 		case tokenEOF:
 			return parserErrorState(errUnexpectedEOF)
 
+		case tokenCloseExpression:
+			return nil
+
 		default:
 			if state := parserStateData(root)(p); state != nil {
-				return nil
+				return state
 			}
 		}
 
@@ -540,9 +564,12 @@ func parserStateOpenList(root *Node) parserState {
 		case tokenEOF:
 			return parserErrorState(errUnexpectedEOF)
 
+		case tokenCloseList:
+			return nil
+
 		default:
 			if state := parserStateData(root)(p); state != nil {
-				return nil
+				return state
 			}
 		}
 
@@ -633,5 +660,6 @@ func printNodeLevel(node *Node, level int) {
 }
 
 func parserError(err error, tok *token) error {
-	return fmt.Errorf("%v: %v", err.Error(), tok)
+	log.Fatalf("%v: %v", err.Error(), tok)
+	return err
 }

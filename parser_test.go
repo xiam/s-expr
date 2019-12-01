@@ -2,7 +2,7 @@ package sexpr
 
 import (
 	//"errors"
-	//"fmt"
+	"fmt"
 	"log"
 	//"strings"
 	"testing"
@@ -99,6 +99,18 @@ func TestParserBuildTree(t *testing.T) {
 		{
 			In: `(fn [] [(print %1 %2 %3 %*)])`,
 		},
+		{
+			In: `(print "hello world" "beautiful world!") (echo :brave :new :world)`,
+		},
+		{
+			In: `(+ 1 2 3 4)`,
+		},
+		{
+			In: `{+ 1 2 3 4}`,
+		},
+		{
+			In: `[+ 1 2 3 4]`,
+		},
 	}
 
 	for i := range testCases {
@@ -120,9 +132,6 @@ func TestParserEvaluate(t *testing.T) {
 	}{
 		{
 			In: `1`,
-		},
-		{
-			In: `1 2 3`,
 		},
 		{
 			In: `[]`,
@@ -149,18 +158,103 @@ func TestParserEvaluate(t *testing.T) {
 			In: `{:a 1 :b 2 :c 3 :e [1 2 3]}`,
 		},
 		{
-			In: `{:a 1 :b 2 :c 3 :e [1 2 3]} [1 2 3] 4 :foo`,
+			In: `[{:a 1 :b 2 :c 3 :e [1 2 3]} [1 2 3] 4 :foo]`,
 		},
 		{
 			In: `(1)`,
 		},
 		{
+			In: `([1 2 3])`,
+		},
+		{
 			In: `(:nil)`,
 		},
 		{
-			In: `(print :hello)`,
+			In: `(:hello)`,
+		},
+		{
+			In: `(([1 2 3 {:a 4}]))`,
+		},
+		{
+			In: `(nop)`,
+		},
+		{
+			In: `(print "hello world!" " beautiful world!")`,
+		},
+		{
+			In: `(echo "hello world!" "beautiful world!" 1 2)`,
+		},
+		{
+			In: `(+ 1 2 3 4)`,
+		},
+		{
+			In: `(+ (+ 1 2 3 4) 10)`,
+		},
+		{
+			In: `((echo "+") (+ 1 2 3 4) 10 (15) 16)`,
 		},
 	}
+
+	RegisterPrefix("+", func(ctx *Context) (*Value, error) {
+		defer ctx.CloseOut()
+
+		result := int64(0)
+		for {
+			arg, err := ctx.NextInput()
+			if err != nil {
+				if err == errClosedChannel {
+					break
+				}
+				return nil, err
+			}
+			result += arg.Int()
+		}
+
+		value, err := NewValue(result)
+		if err != nil {
+			return nil, err
+		}
+		ctx.Yield(value)
+		return nil, nil
+	})
+
+	RegisterPrefix("echo", func(ctx *Context) (*Value, error) {
+		defer ctx.CloseOut()
+
+		for {
+			arg, err := ctx.NextInput()
+			log.Printf("NEXTINPUT-RECV: %v - %v", arg, err)
+			if err != nil {
+				if err == errClosedChannel {
+					return nil, nil
+				}
+				return nil, err
+			}
+			log.Printf("ECHO YIELD: %v", arg)
+			ctx.Yield(&arg)
+		}
+		return nil, nil
+	})
+
+	RegisterPrefix("nop", func(ctx *Context) (*Value, error) {
+		defer ctx.CloseOut()
+		return nil, nil
+	})
+
+	RegisterPrefix("print", func(ctx *Context) (*Value, error) {
+		defer ctx.CloseOut()
+		for {
+			arg, err := ctx.NextInput()
+			if err != nil {
+				if err == errClosedChannel {
+					return nil, nil
+				}
+				return nil, err
+			}
+			fmt.Printf("%v", arg)
+		}
+		return nil, nil
+	})
 
 	for i := range testCases {
 		root, err := parse([]byte(testCases[i].In))
