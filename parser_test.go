@@ -1,7 +1,6 @@
 package sexpr
 
 import (
-	//"errors"
 	"fmt"
 	"log"
 	//"strings"
@@ -193,10 +192,22 @@ func TestParserEvaluate(t *testing.T) {
 		{
 			In: `((echo "+") (+ 1 2 3 4) 10 (15) 16)`,
 		},
+		{
+			In: `(= 2 3)`,
+		},
+		{
+			In: `(= 1 1)`,
+		},
+		{
+			In: `(= 1 1 1 1 1 1 1)`,
+		},
+		{
+			In: `(= 1 1 1 1 1 2 14)`,
+		},
 	}
 
 	RegisterPrefix("+", func(ctx *Context) (*Value, error) {
-		defer ctx.CloseOut()
+		defer ctx.Close()
 
 		result := int64(0)
 		for {
@@ -219,7 +230,7 @@ func TestParserEvaluate(t *testing.T) {
 	})
 
 	RegisterPrefix("echo", func(ctx *Context) (*Value, error) {
-		defer ctx.CloseOut()
+		defer ctx.Close()
 
 		for {
 			arg, err := ctx.NextInput()
@@ -236,13 +247,40 @@ func TestParserEvaluate(t *testing.T) {
 		return nil, nil
 	})
 
+	RegisterPrefix("=", func(ctx *Context) (*Value, error) {
+		defer ctx.Close()
+
+		var first *Value
+		for {
+			arg, err := ctx.NextInput()
+			if err != nil {
+				if err == errClosedChannel {
+					ctx.Yield(True)
+					return nil, nil
+				}
+				return nil, err
+			}
+			if first == nil {
+				first = &arg
+				continue
+			}
+			if (*first).v != arg.v {
+				ctx.Close()
+
+				ctx.Yield(False)
+				return nil, nil
+			}
+		}
+
+	})
+
 	RegisterPrefix("nop", func(ctx *Context) (*Value, error) {
-		defer ctx.CloseOut()
+		defer ctx.Close()
 		return nil, nil
 	})
 
 	RegisterPrefix("print", func(ctx *Context) (*Value, error) {
-		defer ctx.CloseOut()
+		defer ctx.Close()
 		for {
 			arg, err := ctx.NextInput()
 			if err != nil {

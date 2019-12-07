@@ -54,54 +54,49 @@ type Function func(*Context) (*Value, error)
 type Context struct {
 	Parent *Context
 
-	in    chan Value
-	inErr chan error
+	in       chan Value
+	inErr    chan error
+	inClosed bool
 
-	out    chan Value
-	outErr chan error
+	out       chan Value
+	outErr    chan error
+	outClosed bool
 
-	done chan struct{}
+	done bool
 
 	st *symbolTable
 }
 
 func (ctx *Context) Push(value *Value) error {
-	log.Printf("PUSH: %v", value)
+	if ctx.inClosed {
+		log.Printf("PUSH: closed")
+		return nil
+	}
 	if value == nil {
 		panic("can't push nil value")
 	}
+	log.Printf("PUSH: %v", value)
 	ctx.in <- *value
+	log.Printf("PUSHED: %v", value)
+	return nil
+}
+
+func (ctx *Context) Close() error {
 	return nil
 }
 
 func (ctx *Context) Yield(value *Value) error {
-	log.Printf("YIELD: %v", value)
+	if ctx.outClosed {
+		log.Printf("YIELD: closed")
+		return nil
+	}
 	if value == nil {
 		panic("can't yield nil value")
 	}
+	log.Printf("YIELD: %v", value)
 	ctx.out <- *value
+	log.Printf("YIELDED: %v", value)
 	return nil
-}
-
-func (ctx *Context) Close() {
-	close(ctx.in)
-	close(ctx.out)
-}
-
-func (ctx *Context) Done() {
-	close(ctx.in)
-	close(ctx.out)
-
-	ctx.done <- struct{}{}
-	close(ctx.done)
-}
-
-func (ctx *Context) CloseIn() {
-	close(ctx.in)
-}
-
-func (ctx *Context) CloseOut() {
-	close(ctx.out)
 }
 
 func (ctx *Context) NextInput() (Value, error) {
@@ -192,7 +187,6 @@ func NewContext(parent *Context) *Context {
 		out:    make(chan Value),
 		outErr: make(chan error),
 
-		done: make(chan struct{}),
 		st: &symbolTable{
 			t: symbolTableTypeDict,
 			n: make(map[string]*symbolTable),
@@ -329,13 +323,16 @@ func evalContext(ctx *Context, node *Node) error {
 		var fnCtx *Context
 
 		for {
+			log.Printf("WAIT FOR NEXT OUTOUT")
 			value, err := newCtx.NextOutput()
+			log.Printf("GOT NEXT: %v - %v", value, err)
 
 			if err != nil {
 				if err == errClosedChannel {
 					if expr != nil && len(result) < 1 {
 						switch expr.Type {
-						case ValueTypeAtom, ValueTypeNil, ValueTypeInt, ValueTypeFloat, ValueTypeList, ValueTypeMap, ValueTypeBinary:
+						case ValueTypeAtom, ValueTypeNil, ValueTypeInt, ValueTypeFloat, ValueTypeList, ValueTypeMap, ValueTypeBinary, ValueTypeBool:
+							log.Printf("YIELD")
 							return ctx.Yield(expr)
 						}
 						return errors.New("unsupported function - 1")
@@ -343,8 +340,7 @@ func evalContext(ctx *Context, node *Node) error {
 					if fnCtx == nil {
 						return ctx.Yield(Nil)
 					}
-					log.Printf("CLOSE IN")
-					fnCtx.CloseIn()
+					fnCtx.Close()
 					return ctx.Yield(<-collected)
 				}
 				return err
@@ -379,6 +375,7 @@ func evalContext(ctx *Context, node *Node) error {
 					value, err := fnCtx.Collect()
 					log.Printf("[COLLECTED] OUT.1: %v, ERR: %v", value, err)
 					collected <- value
+					log.Printf("DONE COLLECTING")
 				}()
 			default:
 				expr = &value

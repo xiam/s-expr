@@ -43,7 +43,11 @@ type Value struct {
 	Type ValueType
 }
 
-var Nil = &Value{Type: ValueTypeNil}
+var (
+	Nil   = &Value{Type: ValueTypeNil}
+	True  = &Value{Type: ValueTypeBool, v: true}
+	False = &Value{Type: ValueTypeBool, v: false}
+)
 
 func NewValue(value interface{}) (*Value, error) {
 	switch v := value.(type) {
