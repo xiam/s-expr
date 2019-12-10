@@ -6,6 +6,26 @@ import (
 	"log"
 )
 
+type contextState uint8
+
+const (
+	contextStateReady contextState = iota
+
+	contextStateWaitForInput
+	contextStateInput
+	contextStateCloseInput
+	contextStateOutput
+	contextStateCloseOutput
+
+	contextStateError
+	contextStateDone
+)
+
+type contextMessage struct {
+	state   contextState
+	payload interface{}
+}
+
 var (
 	errUndefinedValue    = errors.New("undefined value")
 	errUndefinedFunction = errors.New("undefined function")
@@ -62,26 +82,102 @@ type Context struct {
 	outErr    chan error
 	outClosed bool
 
+	message chan contextMessage
+
+	lastArgument *Value
+
 	done bool
 
 	st *symbolTable
 }
 
-func (ctx *Context) Push(value *Value) error {
-	if ctx.inClosed {
-		log.Printf("PUSH: closed")
-		return nil
-	}
-	if value == nil {
-		panic("can't push nil value")
-	}
-	log.Printf("PUSH: %v", value)
-	ctx.in <- *value
-	log.Printf("PUSHED: %v", value)
+func (ctx *Context) closeIn() {
+	close(ctx.in)
+}
+
+func (ctx *Context) closeOut() {
+	close(ctx.out)
+}
+
+func (ctx *Context) exit(err error) error {
 	return nil
 }
 
-func (ctx *Context) Close() error {
+func (ctx *Context) run() error {
+	for {
+		switch m := <-ctx.message; m.state {
+		case contextStateInput:
+			ctx.in <- m.payload.(Value)
+		case contextStateCloseInput:
+			ctx.closeIn()
+		case contextStateOutput:
+			ctx.out <- m.payload.(Value)
+		case contextStateCloseOutput:
+			ctx.closeOut()
+		case contextStateDone:
+			ctx.exit(m.payload.(error))
+			return nil
+		}
+	}
+
+	panic("unreachable")
+}
+
+func (ctx *Context) Next() bool {
+	arg, ok := <-ctx.in
+	if !ok {
+		return false
+	}
+	ctx.lastArgument = &arg
+	return true
+}
+
+func (ctx *Context) Arguments() ([]*Value, error) {
+	if ctx.inClosed {
+		return nil, errors.New("channel is closed")
+	}
+	args := []*Value{}
+	for ctx.Next() {
+		args = append(args, ctx.Argument())
+	}
+	return args, nil
+}
+
+func (ctx *Context) Argument() *Value {
+	return ctx.lastArgument
+}
+
+func (ctx *Context) Exit(err error) {
+	close(ctx.out)
+	ctx.outClosed = true
+	if err != nil {
+		ctx.outErr <- err
+	}
+}
+
+func (ctx *Context) Close() {
+	if !ctx.inClosed {
+		close(ctx.in)
+	}
+	ctx.inClosed = true
+}
+
+func (ctx *Context) Push(value *Value) error {
+	if ctx.inClosed {
+		return errors.New("channel is closed")
+	}
+	ctx.in <- *value
+	return nil
+}
+
+func (ctx *Context) Return(values ...*Value) error {
+	for i := range values {
+		err := ctx.Yield(values[i])
+		if err != nil {
+			return err
+		}
+	}
+	ctx.Exit(nil)
 	return nil
 }
 
@@ -178,8 +274,10 @@ func (ctx *Context) Get(name string) (*Value, error) {
 }
 
 func NewContext(parent *Context) *Context {
-	return &Context{
+	ctx := &Context{
 		Parent: parent,
+
+		message: make(chan contextMessage),
 
 		in:    make(chan Value),
 		inErr: make(chan error),
@@ -192,6 +290,13 @@ func NewContext(parent *Context) *Context {
 			n: make(map[string]*symbolTable),
 		},
 	}
+
+	go func() {
+		err := ctx.run()
+		log.Printf("ctx: %v", err)
+	}()
+
+	return ctx
 }
 
 var defaultContext = NewContext(nil)
