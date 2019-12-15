@@ -1,7 +1,6 @@
 package sexpr
 
 import (
-	"log"
 	"sync"
 	"testing"
 
@@ -69,60 +68,99 @@ func TestContextSequentialInput(t *testing.T) {
 		go func() {
 			defer ctx.Close()
 			var err error
+			var accept bool
 
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(True)
 			assert.NoError(t, err)
 
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(False)
 			assert.NoError(t, err)
 
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(Nil)
 			assert.NoError(t, err)
 
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(False)
 			assert.NoError(t, err)
 		}()
 
 		{
+			i := 0
 			for ctx.Next() {
-				arg := ctx.Argument()
-
-				log.Printf("arg: %v", *arg)
+				value := ctx.Argument()
+				switch i {
+				case 0:
+					assert.Equal(t, True, value)
+				case 1:
+					assert.Equal(t, False, value)
+				case 2:
+					assert.Equal(t, Nil, value)
+				case 3:
+					assert.Equal(t, False, value)
+				}
+				i++
 			}
+			assert.Equal(t, 4, i)
 		}
 	}
 }
 
-func TestContextInterruptedInput(t *testing.T) {
+func TestContextInterruptedSequentialInput(t *testing.T) {
 	{
 		ctx := NewContext(nil)
 		assert.NotNil(t, ctx)
 
 		go func() {
 			defer ctx.Close()
-			var err error
 
+			var err error
+			var accept bool
+
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(True)
 			assert.NoError(t, err)
 
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(False)
 			assert.NoError(t, err)
 
 			ctx.Close()
 
+			accept = ctx.Accept()
+			assert.False(t, accept)
 			err = ctx.Push(Nil)
 			assert.Error(t, err)
 
+			accept = ctx.Accept()
+			assert.False(t, accept)
 			err = ctx.Push(False)
 			assert.Error(t, err)
+
+			ctx.Close()
 		}()
 
 		{
+			i := 0
 			for ctx.Next() {
-				arg := ctx.Argument()
-
-				log.Printf("arg: %v", *arg)
+				value := ctx.Argument()
+				switch i {
+				case 0:
+					assert.Equal(t, True, value)
+				case 1:
+					assert.Equal(t, False, value)
+				}
+				i++
 			}
+			assert.Equal(t, 2, i)
 		}
 	}
 }
@@ -137,19 +175,29 @@ func TestContextEcho(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var err error
 
+			var err error
+			var accept bool
+
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(True)
 			assert.NoError(t, err)
 
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(False)
 			assert.NoError(t, err)
 
 			ctx.Close()
 
+			accept = ctx.Accept()
+			assert.False(t, accept)
 			err = ctx.Push(Nil)
 			assert.Error(t, err)
 
+			accept = ctx.Accept()
+			assert.False(t, accept)
 			err = ctx.Push(False)
 			assert.Error(t, err)
 		}()
@@ -161,17 +209,30 @@ func TestContextEcho(t *testing.T) {
 			values, err := ctx.Collect()
 			assert.NoError(t, err)
 
-			log.Printf("values: %v", values)
+			assert.Equal(t, 2, len(values))
+			assert.Equal(t, True, values[0])
+			assert.Equal(t, False, values[1])
 		}()
 
 		{
+			i := 0
 			for ctx.Next() {
-				arg := ctx.Argument()
-				assert.NotNil(t, arg)
+				value := ctx.Argument()
+				assert.NotNil(t, value)
 
-				err := ctx.Yield(arg)
+				switch i {
+				case 0:
+					assert.Equal(t, True, value)
+				case 1:
+					assert.Equal(t, False, value)
+				}
+
+				err := ctx.Yield(value)
 				assert.NoError(t, err)
+
+				i++
 			}
+			assert.Equal(t, 2, i)
 			ctx.Exit(nil)
 		}
 
@@ -179,7 +240,7 @@ func TestContextEcho(t *testing.T) {
 	}
 }
 
-func TestContextEcho2(t *testing.T) {
+func TestContextCollectAllArguments(t *testing.T) {
 	{
 		var wg sync.WaitGroup
 
@@ -189,19 +250,29 @@ func TestContextEcho2(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var err error
 
+			var err error
+			var accept bool
+
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(True)
 			assert.NoError(t, err)
 
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(False)
 			assert.NoError(t, err)
 
 			ctx.Close()
 
+			accept = ctx.Accept()
+			assert.False(t, accept)
 			err = ctx.Push(Nil)
 			assert.Error(t, err)
 
+			accept = ctx.Accept()
+			assert.False(t, accept)
 			err = ctx.Push(False)
 			assert.Error(t, err)
 		}()
@@ -213,7 +284,9 @@ func TestContextEcho2(t *testing.T) {
 			values, err := ctx.Collect()
 			assert.NoError(t, err)
 
-			log.Printf("values: %v", values)
+			assert.Equal(t, 2, len(values))
+			assert.Equal(t, True, values[0])
+			assert.Equal(t, False, values[1])
 		}()
 
 		{
@@ -224,6 +297,7 @@ func TestContextEcho2(t *testing.T) {
 				err := ctx.Yield(args[i])
 				assert.NoError(t, err)
 			}
+
 			ctx.Exit(nil)
 		}
 
@@ -231,7 +305,7 @@ func TestContextEcho2(t *testing.T) {
 	}
 }
 
-func TestContextEcho3(t *testing.T) {
+func TestContextReturn(t *testing.T) {
 	{
 		var wg sync.WaitGroup
 
@@ -241,19 +315,29 @@ func TestContextEcho3(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var err error
 
+			var err error
+			var accept bool
+
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(True)
 			assert.NoError(t, err)
 
+			accept = ctx.Accept()
+			assert.True(t, accept)
 			err = ctx.Push(False)
 			assert.NoError(t, err)
 
 			ctx.Close()
 
+			accept = ctx.Accept()
+			assert.False(t, accept)
 			err = ctx.Push(Nil)
 			assert.Error(t, err)
 
+			accept = ctx.Accept()
+			assert.False(t, accept)
 			err = ctx.Push(False)
 			assert.Error(t, err)
 		}()
@@ -265,7 +349,9 @@ func TestContextEcho3(t *testing.T) {
 			values, err := ctx.Collect()
 			assert.NoError(t, err)
 
-			log.Printf("values: %v", values)
+			assert.Equal(t, 2, len(values))
+			assert.Equal(t, True, values[0])
+			assert.Equal(t, False, values[1])
 		}()
 
 		{
@@ -275,58 +361,6 @@ func TestContextEcho3(t *testing.T) {
 			err = ctx.Return(args...)
 			assert.NoError(t, err)
 		}
-
-		wg.Wait()
-	}
-}
-
-func TestContextEcho4(t *testing.T) {
-	{
-		var wg sync.WaitGroup
-
-		ctx := NewContext(nil)
-		assert.NotNil(t, ctx)
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			var err error
-
-			err = ctx.Push(True)
-			assert.NoError(t, err)
-
-			err = ctx.Push(False)
-			assert.NoError(t, err)
-
-			ctx.Close()
-
-			err = ctx.Push(Nil)
-			assert.Error(t, err)
-
-			err = ctx.Push(False)
-			assert.Error(t, err)
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			values, err := ctx.Collect()
-			assert.NoError(t, err)
-
-			log.Printf("values: %v", values)
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			args, err := ctx.Arguments()
-			assert.NoError(t, err)
-
-			err = ctx.Return(args...)
-			assert.NoError(t, err)
-		}()
 
 		wg.Wait()
 	}
