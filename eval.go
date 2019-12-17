@@ -4,6 +4,12 @@ import (
 	"errors"
 	//"fmt"
 	"log"
+	"sync"
+)
+
+var (
+	errFunctionClosed = errors.New("function is closed")
+	errStreamClosed   = errors.New("stream is closed")
 )
 
 type contextState uint8
@@ -11,7 +17,7 @@ type contextState uint8
 const (
 	contextStateReady contextState = iota
 
-	contextStateWaitForInput
+	contextStateAccept
 	contextStateInput
 	contextStateCloseInput
 	contextStateOutput
@@ -74,67 +80,66 @@ type Function func(*Context) (*Value, error)
 type Context struct {
 	Parent *Context
 
-	in       chan Value
-	inErr    chan error
+	ticket chan struct{}
+
+	inMu  sync.Mutex
+	mu    sync.Mutex
+	argMu sync.Mutex
+
+	in       chan *Value
 	inClosed bool
 
-	out       chan Value
-	outErr    chan error
+	doneAccept chan struct{}
+
+	out       chan *Value
 	outClosed bool
 
-	message chan contextMessage
+	accept chan struct{}
 
+	exitStatus   error
 	lastArgument *Value
-
-	done bool
 
 	st *symbolTable
 }
 
 func (ctx *Context) closeIn() {
-	close(ctx.in)
-}
+	if ctx.inClosed {
+		return
+	}
 
-func (ctx *Context) closeOut() {
-	close(ctx.out)
+	close(ctx.accept)
+	close(ctx.in)
+
+	ctx.inClosed = true
 }
 
 func (ctx *Context) exit(err error) error {
+	if err != nil {
+		ctx.exitStatus = err
+	}
 	return nil
 }
 
-func (ctx *Context) run() error {
-	for {
-		switch m := <-ctx.message; m.state {
-		case contextStateInput:
-			ctx.in <- m.payload.(Value)
-		case contextStateCloseInput:
-			ctx.closeIn()
-		case contextStateOutput:
-			ctx.out <- m.payload.(Value)
-		case contextStateCloseOutput:
-			ctx.closeOut()
-		case contextStateDone:
-			ctx.exit(m.payload.(error))
-			return nil
-		}
-	}
-
-	panic("unreachable")
-}
-
 func (ctx *Context) Next() bool {
-	arg, ok := <-ctx.in
+	ctx.mu.Lock()
+	if ctx.inClosed {
+		ctx.mu.Unlock()
+		return false
+	}
+	ctx.accept <- struct{}{}
+	ctx.mu.Unlock()
+
+	var ok bool
+	ctx.lastArgument, ok = <-ctx.in
 	if !ok {
 		return false
 	}
-	ctx.lastArgument = &arg
 	return true
 }
 
 func (ctx *Context) Arguments() ([]*Value, error) {
 	if ctx.inClosed {
-		return nil, errors.New("channel is closed")
+		return nil, errStreamClosed
 	}
 	args := []*Value{}
 	for ctx.Next() {
@@ -148,114 +153,100 @@ func (ctx *Context) Argument() *Value {
 }
 
 func (ctx *Context) Exit(err error) {
+	if ctx.outClosed {
+		return
+	}
+
 	close(ctx.out)
 	ctx.outClosed = true
-	if err != nil {
-		ctx.outErr <- err
-	}
+	ctx.Close()
 }
 
 func (ctx *Context) Close() {
-	if !ctx.inClosed {
-		close(ctx.in)
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	if ctx.inClosed {
+		return
 	}
 	ctx.inClosed = true
+	close(ctx.doneAccept)
+	close(ctx.accept)
+	close(ctx.in)
 }
 
 func (ctx *Context) Push(value *Value) error {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
 	if ctx.inClosed {
 		return errors.New("channel is closed")
 	}
-	ctx.in <- *value
+	ctx.in <- value
 	return nil
 }
 
 func (ctx *Context) Return(values ...*Value) error {
+	defer ctx.Exit(nil)
+
 	for i := range values {
 		err := ctx.Yield(values[i])
 		if err != nil {
 			return err
 		}
 	}
-	ctx.Exit(nil)
 	return nil
+}
+
+func (ctx *Context) Accept() bool {
+	if ctx.inClosed {
+		return false
+	}
+	select {
+	case <-ctx.doneAccept:
+	case <-ctx.accept:
+		return true
+	}
+	return false
 }
 
 func (ctx *Context) Yield(value *Value) error {
 	if ctx.outClosed {
-		log.Printf("YIELD: closed")
 		return nil
 	}
 	if value == nil {
 		panic("can't yield nil value")
 	}
-	log.Printf("YIELD: %v", value)
-	ctx.out <- *value
-	log.Printf("YIELDED: %v", value)
+	ctx.out <- value
 	return nil
 }
 
-func (ctx *Context) NextInput() (Value, error) {
-	select {
-	case err := <-ctx.inErr:
-		return *Nil, err
-	default:
-		in, ok := <-ctx.in
-		if !ok {
-			return *Nil, errClosedChannel
-		}
-		log.Printf("NEXTINPUT: %v - %v", in, ok)
-		//if in == nil {
-		//	return Nil, nil
-		//}
-		return in, nil
+func (ctx *Context) Output() (*Value, error) {
+	out, ok := <-ctx.out
+	if !ok {
+		return nil, errClosedChannel
 	}
-
-	panic("unreachable")
+	return out, nil
 }
 
-func (ctx *Context) NextOutput() (Value, error) {
-	select {
-	case err := <-ctx.outErr:
-		return *Nil, err
-	default:
-		out, ok := <-ctx.out
-		if !ok {
-			return *Nil, errClosedChannel
-		}
-		log.Printf("NEXTOUTPUT: %v - %v", out, ok)
-		//if out == nil {
-		//	return Nil, nil
-		//}
-		return out, nil
+func (ctx *Context) Result() (*Value, error) {
+	values, err := ctx.Collect()
+	if err != nil {
+		return nil, err
 	}
-
-	panic("unreachable")
+	return NewValue(values)
 }
 
-func (ctx *Context) Collect() (*Value, error) {
+func (ctx *Context) Collect() ([]*Value, error) {
 	values := []*Value{}
 
 	for {
-		select {
-		case err := <-ctx.outErr:
-			return nil, err
-		default:
-			out, ok := <-ctx.out
-			log.Printf("inside collect: %v - %v", out, ok)
-			if !ok {
-				if len(values) == 1 {
-					return values[0], nil
-				}
-				v, err := NewValue(values)
-				log.Printf("inside collect 2: %v - %v", out, ok)
-				return v, err
-			}
-			values = append(values, &out)
+		value, err := ctx.Output()
+		if err == errClosedChannel {
+			break
 		}
+		values = append(values, value)
 	}
 
-	panic("unreachable")
+	return values, nil
 }
 
 func (ctx *Context) Set(name string, value *Value) error {
@@ -276,25 +267,19 @@ func (ctx *Context) Get(name string) (*Value, error) {
 func NewContext(parent *Context) *Context {
 	ctx := &Context{
 		Parent: parent,
+		ticket: make(chan struct{}),
 
-		message: make(chan contextMessage),
+		accept:     make(chan struct{}, 1),
+		doneAccept: make(chan struct{}),
 
-		in:    make(chan Value),
-		inErr: make(chan error),
-
-		out:    make(chan Value),
-		outErr: make(chan error),
+		in:  make(chan *Value),
+		out: make(chan *Value),
 
 		st: &symbolTable{
 			t: symbolTableTypeDict,
 			n: make(map[string]*symbolTable),
 		},
 	}
-
-	go func() {
-		err := ctx.run()
-		log.Printf("ctx: %v", err)
-	}()
 
 	return ctx
 }
@@ -313,16 +298,13 @@ func RegisterPrefix(name string, fn Function) {
 }
 
 func evalContextMap(ctx *Context, nodes []*Node) error {
-	log.Printf("evalContextList")
-
 	go func() {
-		defer ctx.Close()
+		defer ctx.Exit(nil)
 
 		for i := range nodes {
 			err := evalContext(ctx, nodes[i])
 			if err != nil {
-				log.Printf("eval error: %v", err)
-				ctx.outErr <- err
+				//ctx.outErr <- err
 				return
 			}
 		}
@@ -332,16 +314,13 @@ func evalContextMap(ctx *Context, nodes []*Node) error {
 }
 
 func evalContextList(ctx *Context, nodes []*Node) error {
-	log.Printf("evalContextList")
-
 	go func() {
-		defer ctx.Close()
+		defer ctx.Exit(nil)
 
 		for i := range nodes {
 			err := evalContext(ctx, nodes[i])
 			if err != nil {
-				log.Printf("eval error: %v", err)
-				ctx.outErr <- err
+				//ctx.outErr <- err
 				return
 			}
 		}
@@ -351,25 +330,18 @@ func evalContextList(ctx *Context, nodes []*Node) error {
 }
 
 func evalContext(ctx *Context, node *Node) error {
-
-	log.Printf("evalContext: %v", node)
-
 	switch node.Type {
 	case NodeTypeAtom:
-		log.Printf("ATOM: %v", node)
-
 		return ctx.Yield(&node.Value)
 
 	case NodeTypeList:
-		log.Printf("LIST: %v", node)
-
 		newCtx := NewContext(ctx)
 		err := evalContextList(newCtx, node.Children)
 		if err != nil {
 			return err
 		}
 
-		value, err := newCtx.Collect()
+		value, err := newCtx.Result()
 		if err != nil {
 			return err
 		}
@@ -377,8 +349,6 @@ func evalContext(ctx *Context, node *Node) error {
 		return ctx.Yield(value)
 
 	case NodeTypeMap:
-		log.Printf("MAP: %#v", node)
-
 		newCtx := NewContext(ctx)
 		err := evalContextList(newCtx, node.Children)
 		if err != nil {
@@ -388,7 +358,7 @@ func evalContext(ctx *Context, node *Node) error {
 		result := map[Value]*Value{}
 		var key *Value
 		for {
-			value, err := newCtx.NextOutput()
+			value, err := newCtx.Output()
 			if err != nil {
 				if err == errClosedChannel {
 					value, err := NewValue(result)
@@ -400,10 +370,10 @@ func evalContext(ctx *Context, node *Node) error {
 				return err
 			}
 			if key == nil {
-				key = &value
+				key = value
 				result[*key] = Nil
 			} else {
-				result[*key] = &value
+				result[*key] = value
 				key = nil
 			}
 		}
@@ -411,33 +381,25 @@ func evalContext(ctx *Context, node *Node) error {
 		panic("unreachable")
 
 	case NodeTypeExpression:
-		log.Printf("EXPRESSION: %v", node)
-
 		newCtx := NewContext(ctx)
-
 		err := evalContextList(newCtx, node.Children)
 		if err != nil {
 			return err
 		}
 
-		collected := make(chan *Value)
-
-		result := []*Value{}
+		collected := make(chan []*Value)
 
 		var expr *Value
 		var fnCtx *Context
 
 		for {
-			log.Printf("WAIT FOR NEXT OUTOUT")
-			value, err := newCtx.NextOutput()
-			log.Printf("GOT NEXT: %v - %v", value, err)
+			value, err := newCtx.Output()
 
 			if err != nil {
 				if err == errClosedChannel {
-					if expr != nil && len(result) < 1 {
+					if expr != nil {
 						switch expr.Type {
 						case ValueTypeAtom, ValueTypeNil, ValueTypeInt, ValueTypeFloat, ValueTypeList, ValueTypeMap, ValueTypeBinary, ValueTypeBool:
-							log.Printf("YIELD")
 							return ctx.Yield(expr)
 						}
 						return errors.New("unsupported function - 1")
@@ -446,14 +408,33 @@ func evalContext(ctx *Context, node *Node) error {
 						return ctx.Yield(Nil)
 					}
 					fnCtx.Close()
-					return ctx.Yield(<-collected)
+					values := <-collected
+
+					if len(values) == 0 {
+						ctx.Yield(Nil)
+						return nil
+					}
+					if len(values) == 1 {
+						ctx.Yield(values[0])
+						return nil
+					}
+
+					value, err := NewValue(values)
+					if err != nil {
+						return err
+					}
+					ctx.Yield(value)
+
+					return nil
 				}
 				return err
 			}
 
 			if fnCtx != nil {
-				log.Printf("PUCHING")
-				fnCtx.Push(&value)
+				accept := fnCtx.Accept()
+				if accept {
+					fnCtx.Push(value)
+				}
 				continue
 			}
 
@@ -464,26 +445,24 @@ func evalContext(ctx *Context, node *Node) error {
 			fnCtx = NewContext(ctx)
 			switch value.Type {
 			case ValueTypeString:
-				fnVal, err := ctx.Get(value.String())
+				fnVal, err := ctx.Get(value.raw())
 				if err != nil {
 					return err
 				}
 				fn := fnVal.Function()
 				go func() {
 					out, err := fn(fnCtx)
-					log.Printf("OUT.2: %v, ERR: %v", out, err)
 					if err != nil {
-						fnCtx.outErr <- err
+						//fnCtx.outErr <- err
 					}
+					_ = out
 				}()
 				go func() {
-					value, err := fnCtx.Collect()
-					log.Printf("[COLLECTED] OUT.1: %v, ERR: %v", value, err)
-					collected <- value
-					log.Printf("DONE COLLECTING")
+					values, _ := fnCtx.Collect()
+					collected <- values
 				}()
 			default:
-				expr = &value
+				expr = value
 			}
 		}
 
@@ -494,19 +473,21 @@ func evalContext(ctx *Context, node *Node) error {
 	return nil
 }
 
-func eval(node *Node) (*Context, error) {
+func eval(node *Node) (*Context, interface{}, error) {
 	newCtx := NewContext(defaultContext)
 
 	go func() {
+		defer newCtx.Exit(nil)
+
 		if err := evalContext(newCtx, node); err != nil {
-			log.Printf("ERR: %v", err)
 			return
 		}
 	}()
 
-	log.Printf("READ")
-	value := <-newCtx.out
-	close(newCtx.out)
-	log.Printf("E.ARGS: %v", value)
-	return newCtx, nil
+	values, err := newCtx.Collect()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return newCtx, values, nil
 }

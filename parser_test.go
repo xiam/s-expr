@@ -120,176 +120,183 @@ func TestParserBuildTree(t *testing.T) {
 		printNode(root)
 		s := compileNode(root)
 		log.Printf("compiled: %v", string(s))
-
-		log.Printf("TREE: %#v", root)
+		log.Printf("tree: %#v", root)
 	}
 }
 
 func TestParserEvaluate(t *testing.T) {
 	testCases := []struct {
-		In string
+		In  string
+		Out string
 	}{
 		{
-			In: `1`,
+			In:  `1`,
+			Out: `[1]`,
 		},
 		{
-			In: `[]`,
+			In:  `[]`,
+			Out: `[[]]`,
 		},
 		{
-			In: `[1]`,
+			In:  `[1]`,
+			Out: `[[1]]`,
 		},
 		{
-			In: `[1 2 3]`,
+			In:  `[ 3 2  1 ]`,
+			Out: `[[3 2 1]]`,
 		},
 		{
-			In: `[1 2 [4 5 [6 7 8]] 3]`,
+			In:  `[  1       2 [ 4 5 [6 7 8]] 3]`,
+			Out: `[[1 2 [4 5 [6 7 8]] 3]]`,
 		},
 		{
-			In: `{}`,
+			In:  `{}`,
+			Out: `[{}]`,
 		},
 		{
-			In: `{:a}`,
+			In:  `{:a}`,
+			Out: `[{:a :nil}]`,
 		},
 		{
-			In: `{:a 1}`,
+			In:  `{ :a 1     }`,
+			Out: `[{:a 1}]`,
 		},
 		{
-			In: `{:a 1 :b 2 :c 3 :e [1 2 3]}`,
+			In:  `{:a 1 :b 2 :c 3 :e [1 2 3]}`,
+			Out: `[{:a 1 :b 2 :c 3 :e [1 2 3]}]`,
 		},
 		{
-			In: `[{:a 1 :b 2 :c 3 :e [1 2 3]} [1 2 3] 4 :foo]`,
+			In:  `[{:a 1 :b 2 :c 3 :e [1 2 3]} [1 2 3] 4 :foo]`,
+			Out: `[[{:a 1 :b 2 :c 3 :e [1 2 3]} [1 2 3] 4 :foo]]`,
 		},
 		{
-			In: `(1)`,
+			In:  `(1)`,
+			Out: `[1]`,
 		},
 		{
-			In: `([1 2 3])`,
+			In:  `( [1  2  3 ] )`,
+			Out: `[[1 2 3]]`,
 		},
 		{
-			In: `(:nil)`,
+			In:  `(:nil)`,
+			Out: `[:nil]`,
 		},
 		{
-			In: `(:hello)`,
+			In:  `(:hello)`,
+			Out: `[:hello]`,
 		},
 		{
-			In: `(([1 2 3 {:a 4}]))`,
+			In:  `(([1 2 3 {:a 4}]))`,
+			Out: `[[1 2 3 {:a 4}]]`,
 		},
 		{
-			In: `(nop)`,
+			In:  `(nop)`,
+			Out: `[:nil]`,
 		},
 		{
-			In: `(print "hello world!" " beautiful world!")`,
+			In:  `(print "hello world!" " beautiful world!")`,
+			Out: `[:nil]`,
 		},
 		{
-			In: `(echo "hello world!" "beautiful world!" 1 2)`,
+			In:  `(echo "hello world!" "beautiful world!"  1    2 )`,
+			Out: `[["hello world!" "beautiful world!" 1 2]]`,
 		},
 		{
-			In: `(+ 1 2 3 4)`,
+			In:  `(+ 1 2 3 4)`,
+			Out: `[10]`,
 		},
 		{
-			In: `(+ (+ 1 2 3 4) 10)`,
+			In:  `(+ (+ 1 2 3 4))`,
+			Out: `[10]`,
 		},
 		{
-			In: `((echo "+") (+ 1 2 3 4) 10 (15) 16)`,
+			In:  `(+ (+ 1 2 3 4) 10)`,
+			Out: `[20]`,
 		},
 		{
-			In: `(= 2 3)`,
+			In:  `((echo "+") (+ 1 2 3 4) 10 (15) 16)`,
+			Out: `[51]`,
 		},
 		{
-			In: `(= 1 1)`,
+			In:  `(= 2 3)`,
+			Out: `[:false]`,
 		},
 		{
-			In: `(= 1 1 1 1 1 1 1)`,
+			In:  `(= 1 1)`,
+			Out: `[:true]`,
 		},
 		{
-			In: `(= 1 1 1 1 1 2 14)`,
+			In:  `(= 1 1 1 1 1 1 1)`,
+			Out: `[:true]`,
+		},
+		{
+			In:  `(= 1 1 1 1 1 2 14)`,
+			Out: `[:false]`,
 		},
 	}
 
 	RegisterPrefix("+", func(ctx *Context) (*Value, error) {
-		defer ctx.Close()
+		defer ctx.Exit(nil)
 
 		result := int64(0)
-		for {
-			arg, err := ctx.NextInput()
-			if err != nil {
-				if err == errClosedChannel {
-					break
-				}
-				return nil, err
-			}
-			result += arg.Int()
+		for ctx.Next() {
+			value := ctx.Argument()
+			result += value.Int()
 		}
 
 		value, err := NewValue(result)
 		if err != nil {
 			return nil, err
 		}
+
 		ctx.Yield(value)
 		return nil, nil
 	})
 
 	RegisterPrefix("echo", func(ctx *Context) (*Value, error) {
-		defer ctx.Close()
+		defer ctx.Exit(nil)
 
-		for {
-			arg, err := ctx.NextInput()
-			log.Printf("NEXTINPUT-RECV: %v - %v", arg, err)
-			if err != nil {
-				if err == errClosedChannel {
-					return nil, nil
-				}
-				return nil, err
-			}
-			log.Printf("ECHO YIELD: %v", arg)
-			ctx.Yield(&arg)
+		for ctx.Next() {
+			value := ctx.Argument()
+			ctx.Yield(value)
 		}
 		return nil, nil
 	})
 
 	RegisterPrefix("=", func(ctx *Context) (*Value, error) {
-		defer ctx.Close()
+		defer ctx.Exit(nil)
 
 		var first *Value
-		for {
-			arg, err := ctx.NextInput()
-			if err != nil {
-				if err == errClosedChannel {
-					ctx.Yield(True)
-					return nil, nil
-				}
-				return nil, err
-			}
+		for ctx.Next() {
+			value := ctx.Argument()
+
 			if first == nil {
-				first = &arg
+				first = value
 				continue
 			}
-			if (*first).v != arg.v {
-				ctx.Close()
 
+			if (*first).raw() != value.raw() {
 				ctx.Yield(False)
 				return nil, nil
 			}
 		}
 
+		ctx.Yield(True)
+		return nil, nil
 	})
 
 	RegisterPrefix("nop", func(ctx *Context) (*Value, error) {
-		defer ctx.Close()
+		defer ctx.Exit(nil)
+
 		return nil, nil
 	})
 
 	RegisterPrefix("print", func(ctx *Context) (*Value, error) {
-		defer ctx.Close()
-		for {
-			arg, err := ctx.NextInput()
-			if err != nil {
-				if err == errClosedChannel {
-					return nil, nil
-				}
-				return nil, err
-			}
-			fmt.Printf("%v", arg)
+		defer ctx.Exit(nil)
+
+		for ctx.Next() {
+			value := ctx.Argument()
+			fmt.Printf("%s", value.raw())
 		}
 		return nil, nil
 	})
@@ -301,238 +308,12 @@ func TestParserEvaluate(t *testing.T) {
 
 		printNode(root)
 
-		ctx, err := eval(root)
+		_, result, err := eval(root)
 		assert.NoError(t, err)
 
-		log.Printf("CTX: %#v", ctx)
+		s, err := compileValue(result)
+		assert.NoError(t, err)
+
+		assert.Equal(t, testCases[i].Out, string(s))
 	}
-
-	/*
-		{
-			ctx, err := eval(tree)
-			assert.NoError(t, err)
-
-			log.Printf("CTX: %#v", ctx)
-		}
-
-			tree, err := parse([]byte(`
-			[1 2 3 [4 5 [6 7 8]]]
-			[foo bar baz]
-			`))
-				tree, err := parse([]byte(`
-
-				[1 2 3 [4 5 [6 7 8]]]
-
-				(when
-					((= 1 0) 11)
-					((= 1 1) 99 [110 [121]])
-					((= 2 1) 33)
-				)`))
-	*/
-
-	/*
-		tree, err := parse([]byte(`
-			[7 8 1]
-
-			(fn zero []
-			[
-				(set cero (now))
-				(set uno "UNO")
-				(set dos "DOS")
-				(print (get cero))
-				(print (get uno))
-			])
-
-			(zero)
-			(zero)
-			(zero)
-			(zero)
-
-			(fn WAKA [n] [
-				(print (get n))
-			])
-
-			(WAKA 6)
-
-			(fn FIB [n] [
-				(when
-					((= 1 1) 55)
-					((= (get n) 0) 0)
-					((= (get n) 1) 1)
-					# (+ (FIB (- (get n) 1) (- (get n) 2)))
-				)
-			])
-
-			(FIB 5)
-
-			`))
-	*/
-
-	/*
-		RegisterPrefix("set", func(ctx *Context) (interface{}, error) {
-			args, err := ctx.Arguments()
-			if err != nil {
-				return nil, err
-			}
-
-			if len(args) < 2 {
-				return false, errors.New("set requires two arguments")
-			}
-			var value interface{}
-			if len(args) == 2 {
-				value = args[1]
-			} else {
-				value = args[1:]
-			}
-			if err := ctx.Set(fmt.Sprintf("%v", args[0]), value); err != nil {
-				return false, err
-			}
-			return true, nil
-		})
-
-		RegisterPrefix("now", func(ctx *Context) (interface{}, error) {
-			return fmt.Sprintf("%v", time.Now()), nil
-		})
-
-		RegisterPrefix("get", func(ctx *Context) (interface{}, error) {
-			args, err := ctx.Arguments()
-			if err != nil {
-				return nil, err
-			}
-
-			if len(args) < 1 {
-				return nil, errors.New("get requires one argument")
-			}
-			values := []interface{}{}
-			for i := range args {
-				value, err := ctx.Get(fmt.Sprintf("%v", args[i]))
-				log.Printf("WAT")
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, value)
-			}
-			if len(values) == 1 {
-				return values[0], nil
-			}
-			return values, nil
-		})
-
-		RegisterPrefix("fn", func(ctx *Context) (interface{}, error) {
-			args, err := ctx.Arguments()
-			if err != nil {
-				return nil, err
-			}
-
-			if len(args) < 2 {
-				return false, errors.New("fn requires one argument")
-			}
-
-			env := []string{}
-			argset, ok := args[1].([]interface{})
-			if ok {
-				for i := range argset {
-					env = append(env, argset[i].(string))
-				}
-			}
-			log.Printf("ENV: %v", env)
-
-			sargs := []string{}
-			body := args[2].([]interface{})
-			for i := range body {
-				sargs = append(sargs, body[i].(string))
-			}
-			content := strings.Join(sargs, " ")
-			log.Printf("EMEDDED: --%#v--\n", content)
-
-			tree, err := parse([]byte(content))
-			if err != nil {
-				return false, fmt.Errorf("parse error: %v", err)
-			}
-
-			ctx.SetFn(args[0].(string), func(ctx *Context) (interface{}, error) {
-				args, err := ctx.Arguments()
-				if err != nil {
-					return nil, err
-				}
-
-				newCtx := NewContext(ctx)
-				defer newCtx.Close()
-
-				log.Printf("ARGS: %v", args)
-				for i := range env {
-					if i < len(args) {
-						newCtx.Set(env[i], args[i])
-					}
-				}
-
-				if err := evalContext(newCtx, tree); err != nil {
-					return false, err
-				}
-				return true, nil
-			})
-
-			return true, nil
-		})
-
-		RegisterPrefix("=", func(ctx *Context) (interface{}, error) {
-			args, err := ctx.Arguments()
-			if err != nil {
-				return nil, err
-			}
-
-			left := args[0].(interface{})
-			right := args[1].(interface{})
-
-			log.Printf("LEFT: %v, RIGHT: %v", left, right)
-			if fmt.Sprintf("%v", left) == fmt.Sprintf("%v", right) {
-				log.Printf("EQ TRUE")
-				return true, nil
-			}
-
-			return false, nil
-		})
-
-		RegisterPrefix("when", func(ctx *Context) (interface{}, error) {
-			log.Printf("WHEN!")
-			for {
-				log.Printf("WHEN WAIT")
-				arg, err := ctx.Argument()
-				if err != nil {
-					return false, err
-				}
-
-				if arg.([]interface{})[0].(bool) == true {
-					return arg.([]interface{})[1:], nil
-				}
-				return false, nil
-			}
-			return false, nil
-		})
-
-		RegisterPrefix("print", func(ctx *Context) (interface{}, error) {
-			args, err := ctx.Arguments()
-			if err != nil {
-				return nil, err
-			}
-			fmt.Printf("PRINT %#v\n", args)
-			return true, nil
-		})
-
-		RegisterPrefix("+", func(ctx *Context) (interface{}, error) {
-			args, err := ctx.Arguments()
-			if err != nil {
-				return nil, err
-			}
-			return len(args), nil
-		})
-
-		RegisterPrefix("-", func(ctx *Context) (interface{}, error) {
-			args, err := ctx.Arguments()
-			if err != nil {
-				return nil, err
-			}
-			return len(args), nil
-		})
-	*/
 }

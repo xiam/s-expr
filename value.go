@@ -3,6 +3,8 @@ package sexpr
 import (
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 )
 
 type ValueType uint8
@@ -71,7 +73,40 @@ func NewValue(value interface{}) (*Value, error) {
 	return Nil, errors.New("invalid v")
 }
 
+func (v Value) raw() string {
+	return fmt.Sprintf("%v", v.v)
+}
+
 func (v Value) String() string {
+	switch v.Type {
+	case ValueTypeString:
+		return fmt.Sprintf("%q", v.v.(string))
+	case ValueTypeBool:
+		t := v.v.(bool)
+		if t {
+			return ":true"
+		}
+		return ":false"
+	case ValueTypeNil:
+		return ":nil"
+	case ValueTypeInt:
+		return fmt.Sprintf("%d", v.v.(int64))
+	case ValueTypeList:
+		vv := v.v.([]*Value)
+		values := []string{}
+		for i := range vv {
+			values = append(values, vv[i].String())
+		}
+		return "[" + strings.Join(values, " ") + "]"
+	case ValueTypeMap:
+		vv := v.v.(map[Value]*Value)
+		values := []string{}
+		for k := range vv {
+			values = append(values, k.String()+" "+vv[k].String())
+		}
+		sort.Strings(values)
+		return "{" + strings.Join(values, " ") + "}"
+	}
 	if s, ok := v.v.(string); ok {
 		return s
 	}
@@ -104,4 +139,29 @@ func (v Value) List() []*Value {
 
 func (v Value) Function() Function {
 	return v.v.(Function)
+}
+
+func compileValue(in interface{}) ([]byte, error) {
+	var buf string
+	switch v := in.(type) {
+	case *Value:
+		s := v.String()
+		return []byte(s), nil
+	case []*Value:
+		buf = buf + "["
+		for i := range v {
+			if i > 0 {
+				buf = buf + ", "
+			}
+			chunk, err := compileValue(v[i])
+			if err != nil {
+				return nil, err
+			}
+			buf = buf + string(chunk)
+		}
+		buf = buf + "]"
+	default:
+		return nil, fmt.Errorf("unknown type: %T", in)
+	}
+	return []byte(buf), nil
 }
