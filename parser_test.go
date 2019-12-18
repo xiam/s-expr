@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	//"strings"
+	"errors"
 	"testing"
 	//"time"
 
@@ -233,6 +234,30 @@ func TestParserEvaluate(t *testing.T) {
 			In:  `(= 1 1 1 1 1 2 14)`,
 			Out: `[:false]`,
 		},
+		{
+			In:  `(set foo 1)`,
+			Out: `[1]`,
+		},
+		{
+			In:  `(get foo)`,
+			Out: `[:nil]`,
+		},
+		{
+			In:  `[(set foo 1) (get foo)]`,
+			Out: `[[1 1]]`,
+		},
+		{
+			In:  `(echo (set foo 1) (get foo))`,
+			Out: `[[1 1]]`,
+		},
+		{
+			In:  `(:true (echo "hello" "world!"))`,
+			Out: `[["hello" "world!"]]`,
+		},
+		{
+			In:  `(:false (echo "hello" "world!"))`,
+			Out: `[]`,
+		},
 	}
 
 	RegisterPrefix("+", func(ctx *Context) (*Value, error) {
@@ -298,6 +323,52 @@ func TestParserEvaluate(t *testing.T) {
 			value := ctx.Argument()
 			fmt.Printf("%s", value.raw())
 		}
+		return nil, nil
+	})
+
+	RegisterPrefix("get", func(ctx *Context) (*Value, error) {
+		defer ctx.Exit(nil)
+
+		var name *Value
+		for i := 0; ctx.Next(); i++ {
+			argument := ctx.Argument()
+			switch i {
+			case 0:
+				name = argument
+			default:
+				return nil, errors.New("expecting one argument")
+			}
+		}
+
+		value, err := ctx.Get(name.raw())
+		if err != nil {
+			ctx.Yield(Nil)
+			return nil, nil
+		}
+
+		ctx.Yield(value)
+		return nil, nil
+	})
+
+	RegisterPrefix("set", func(ctx *Context) (*Value, error) {
+		defer ctx.Exit(nil)
+
+		var name, value *Value
+		for i := 0; ctx.Next(); i++ {
+			argument := ctx.Argument()
+			switch i {
+			case 0:
+				name = argument
+			case 1:
+				value = argument
+			default:
+				return nil, errors.New("expecting two arguments")
+			}
+		}
+
+		ctx.Set(name.raw(), value)
+		ctx.Yield(value)
+
 		return nil, nil
 	})
 

@@ -250,6 +250,9 @@ func (ctx *Context) Collect() ([]*Value, error) {
 }
 
 func (ctx *Context) Set(name string, value *Value) error {
+	if ctx.Parent != nil {
+		return ctx.Parent.st.Set(name, value)
+	}
 	return ctx.st.Set(name, value)
 }
 
