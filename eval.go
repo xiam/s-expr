@@ -232,6 +232,11 @@ func (ctx *Context) Result() (*Value, error) {
 	if err != nil {
 		return nil, err
 	}
+	/*
+		if len(values) < 1 {
+			return Nil, nil
+		}
+	*/
 	return NewValue(values)
 }
 
@@ -250,9 +255,6 @@ func (ctx *Context) Collect() ([]*Value, error) {
 }
 
 func (ctx *Context) Set(name string, value *Value) error {
-	if ctx.Parent != nil {
-		return ctx.Parent.st.Set(name, value)
-	}
 	return ctx.st.Set(name, value)
 }
 
@@ -265,6 +267,12 @@ func (ctx *Context) Get(name string) (*Value, error) {
 		return ctx.Parent.Get(name)
 	}
 	return fn, nil
+}
+
+func NewClosure(parent *Context) *Context {
+	ctx := NewContext(parent)
+	ctx.st = parent.st
+	return ctx
 }
 
 func NewContext(parent *Context) *Context {
@@ -300,49 +308,107 @@ func RegisterPrefix(name string, fn Function) {
 	}
 }
 
-func evalContextMap(ctx *Context, nodes []*Node) error {
-	go func() {
-		defer ctx.Exit(nil)
+type exprContext struct {
+	fn  *Value
+	ctx *Context
+}
 
-		for i := range nodes {
-			err := evalContext(ctx, nodes[i])
+func evalContextExpression(ctx *Context, nodes []*Node) error {
+	fnCtx := NewClosure(ctx)
+	go func() {
+		defer fnCtx.Close()
+
+		newCtx := NewContext(fnCtx)
+		defer newCtx.Exit(nil)
+
+		for i := 0; i < len(nodes) && fnCtx.Accept(); i++ {
+			go func() {
+				if err := evalContext(newCtx, nodes[i]); err != nil {
+					return
+				}
+			}()
+
+			result, err := newCtx.Output()
 			if err != nil {
-				//ctx.outErr <- err
 				return
 			}
+			fnCtx.Push(result)
 		}
 	}()
+
+	if !fnCtx.Next() {
+		return errors.New("no more stuff")
+	}
+	value := fnCtx.Argument()
+
+	fnVal, err := ctx.Get(value.raw())
+	if err != nil {
+		if len(nodes) > 1 {
+			return errors.New("unexpected arguments")
+		}
+		ctx.Yield(value)
+		return nil
+	}
+	fnVal.name = value.raw()
+
+	go func() error {
+		_, err = fnVal.Function()(fnCtx)
+		if err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	collected, err := fnCtx.Collect()
+	if err != nil {
+		return err
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if len(collected) == 1 {
+		ctx.Yield(collected[0])
+		return nil
+	}
+
+	result, err := NewValue(collected)
+
+	ctx.Yield(result)
 
 	return nil
 }
 
 func evalContextList(ctx *Context, nodes []*Node) error {
-	go func() {
-		defer ctx.Exit(nil)
-
-		for i := range nodes {
-			err := evalContext(ctx, nodes[i])
-			if err != nil {
-				//ctx.outErr <- err
-				return
-			}
+	for i := range nodes {
+		err := evalContext(ctx, nodes[i])
+		if err != nil {
+			//ctx.outErr <- err
+			return err
 		}
-	}()
+	}
 
 	return nil
 }
 
 func evalContext(ctx *Context, node *Node) error {
+
 	switch node.Type {
 	case NodeTypeAtom:
+
 		return ctx.Yield(&node.Value)
 
 	case NodeTypeList:
+
 		newCtx := NewContext(ctx)
-		err := evalContextList(newCtx, node.Children)
-		if err != nil {
-			return err
-		}
+		go func() {
+			defer newCtx.Exit(nil)
+			err := evalContextList(newCtx, node.Children)
+			if err != nil {
+				return
+			}
+		}()
 
 		value, err := newCtx.Result()
 		if err != nil {
@@ -352,11 +418,16 @@ func evalContext(ctx *Context, node *Node) error {
 		return ctx.Yield(value)
 
 	case NodeTypeMap:
+
 		newCtx := NewContext(ctx)
-		err := evalContextList(newCtx, node.Children)
-		if err != nil {
-			return err
-		}
+		go func() error {
+			defer newCtx.Exit(nil)
+			err := evalContextList(newCtx, node.Children)
+			if err != nil {
+				return err
+			}
+			return nil
+		}()
 
 		result := map[Value]*Value{}
 		var key *Value
@@ -384,93 +455,32 @@ func evalContext(ctx *Context, node *Node) error {
 		panic("unreachable")
 
 	case NodeTypeExpression:
-		newCtx := NewContext(ctx)
-		err := evalContextList(newCtx, node.Children)
-		if err != nil {
-			return err
+
+		if len(node.Children) < 1 {
+			return ctx.Yield(Nil)
 		}
 
-		collected := make(chan []*Value)
+		newCtx := NewClosure(ctx)
+		go func() {
+			defer newCtx.Exit(nil)
 
-		var expr *Value
-		var fnCtx *Context
+			if err := evalContextExpression(newCtx, node.Children); err != nil {
+				log.Printf("eval.context: %v", err)
+			}
+		}()
 
 		for {
 			value, err := newCtx.Output()
-
 			if err != nil {
 				if err == errClosedChannel {
-					if expr != nil {
-						switch expr.Type {
-						case ValueTypeAtom, ValueTypeNil, ValueTypeInt, ValueTypeFloat, ValueTypeList, ValueTypeMap, ValueTypeBinary, ValueTypeBool:
-							return ctx.Yield(expr)
-						}
-						return errors.New("unsupported function - 1")
-					}
-					if fnCtx == nil {
-						return ctx.Yield(Nil)
-					}
-					fnCtx.Close()
-					values := <-collected
-
-					if len(values) == 0 {
-						ctx.Yield(Nil)
-						return nil
-					}
-					if len(values) == 1 {
-						ctx.Yield(values[0])
-						return nil
-					}
-
-					value, err := NewValue(values)
-					if err != nil {
-						return err
-					}
-					ctx.Yield(value)
-
 					return nil
 				}
 				return err
 			}
-
-			if fnCtx != nil {
-				accept := fnCtx.Accept()
-				if accept {
-					fnCtx.Push(value)
-				}
-				continue
-			}
-
-			if expr != nil {
-				return errors.New("unsupported function - 2")
-			}
-
-			fnCtx = NewContext(ctx)
-			switch value.Type {
-			case ValueTypeString:
-				fnVal, err := ctx.Get(value.raw())
-				if err != nil {
-					return err
-				}
-				fn := fnVal.Function()
-				go func() {
-					out, err := fn(fnCtx)
-					if err != nil {
-						//fnCtx.outErr <- err
-					}
-					_ = out
-				}()
-				go func() {
-					values, _ := fnCtx.Collect()
-					collected <- values
-				}()
-			default:
-				expr = value
-			}
+			ctx.Yield(value)
 		}
 
-		panic("unreachable")
-
+		return nil
 	}
 
 	return nil
@@ -490,6 +500,14 @@ func eval(node *Node) (*Context, interface{}, error) {
 	values, err := newCtx.Collect()
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if len(values) == 0 {
+		return newCtx, nil, nil
+	}
+
+	if len(values) == 1 {
+		return newCtx, values[0], nil
 	}
 
 	return newCtx, values, nil

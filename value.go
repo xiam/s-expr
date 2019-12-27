@@ -1,7 +1,6 @@
 package sexpr
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -40,7 +39,8 @@ func (vt ValueType) String() string {
 }
 
 type Value struct {
-	v interface{}
+	v    interface{}
+	name string
 
 	Type ValueType
 }
@@ -70,7 +70,7 @@ func NewValue(value interface{}) (*Value, error) {
 	case Function:
 		return &Value{v: v, Type: ValueTypeFunction}, nil
 	}
-	return Nil, errors.New("invalid v")
+	return Nil, fmt.Errorf("invalid value %v", value)
 }
 
 func (v Value) raw() string {
@@ -79,6 +79,8 @@ func (v Value) raw() string {
 
 func (v Value) String() string {
 	switch v.Type {
+	case ValueTypeFunction:
+		return fmt.Sprintf("<function %v: %#v>", v.name, v.v)
 	case ValueTypeString:
 		return fmt.Sprintf("%q", v.v.(string))
 	case ValueTypeBool:

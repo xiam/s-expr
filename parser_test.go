@@ -135,6 +135,10 @@ func TestParserEvaluate(t *testing.T) {
 			Out: `[1]`,
 		},
 		{
+			In:  `1 2 3`,
+			Out: `[1 2 3]`,
+		},
+		{
 			In:  `[]`,
 			Out: `[[]]`,
 		},
@@ -175,6 +179,22 @@ func TestParserEvaluate(t *testing.T) {
 			Out: `[1]`,
 		},
 		{
+			In:  `(((1)))`,
+			Out: `[1]`,
+		},
+		{
+			In:  `([1])`,
+			Out: `[[1]]`,
+		},
+		{
+			In:  `([[1]])`,
+			Out: `[[[1]]]`,
+		},
+		{
+			In:  `[([1])]`,
+			Out: `[[[1]]]`,
+		},
+		{
 			In:  `( [1  2  3 ] )`,
 			Out: `[[1 2 3]]`,
 		},
@@ -191,8 +211,28 @@ func TestParserEvaluate(t *testing.T) {
 			Out: `[[1 2 3 {:a 4}]]`,
 		},
 		{
-			In:  `(nop)`,
-			Out: `[:nil]`,
+			In:  `[(nop [ [ (echo :hello) ]])]`,
+			Out: `[[:nil]]`,
+		},
+		{
+			In:  `[(print "hello " "world!")]`,
+			Out: `[[:nil]]`,
+		},
+		{
+			In:  `(echo "foo" "bar")`,
+			Out: `[["foo" "bar"]]`,
+		},
+		{
+			In:  `(["foo" "bar"])`,
+			Out: `[["foo" "bar"]]`,
+		},
+		{
+			In:  `([["foo" "bar"]])`,
+			Out: `[[["foo" "bar"]]]`,
+		},
+		{
+			In:  `((([["foo" "bar"]])))`,
+			Out: `[[["foo" "bar"]]]`,
 		},
 		{
 			In:  `(print "hello world!" " beautiful world!")`,
@@ -201,6 +241,10 @@ func TestParserEvaluate(t *testing.T) {
 		{
 			In:  `(echo "hello world!" "beautiful world!"  1    2 )`,
 			Out: `[["hello world!" "beautiful world!" 1 2]]`,
+		},
+		{
+			In:  `(10)`,
+			Out: `[10]`,
 		},
 		{
 			In:  `(+ 1 2 3 4)`,
@@ -243,20 +287,80 @@ func TestParserEvaluate(t *testing.T) {
 			Out: `[:nil]`,
 		},
 		{
-			In:  `[(set foo 1) (get foo)]`,
-			Out: `[[1 1]]`,
+			In:  `(get foo) (set foo 3) (get foo) (get foo)`,
+			Out: `[:nil 3 3 3]`,
 		},
 		{
 			In:  `(echo (set foo 1) (get foo))`,
 			Out: `[[1 1]]`,
 		},
 		{
-			In:  `(:true (echo "hello" "world!"))`,
+			In:  `(echo "hello" "world!")`,
 			Out: `[["hello" "world!"]]`,
 		},
 		{
+			In:  `(echo "hello" (echo "world!"))`,
+			Out: `[["hello" "world!"]]`,
+		},
+		{
+			In:  `(echo "hello" (echo (echo (echo "world!"))))`,
+			Out: `[["hello" "world!"]]`,
+		},
+		{
+			In:  `(:true)`,
+			Out: `[:true]`,
+		},
+		{
+			In:  `("anyvalue")`,
+			Out: `["anyvalue"]`,
+		},
+		{
+			In:  `(  123 )`,
+			Out: `[123]`,
+		},
+		{
+			In:  `(:true :true)`,
+			Out: `[:true]`,
+		},
+		{
+			In:  `(:true :false :true :true :false)`,
+			Out: `[:true]`,
+		},
+		{
+			In:  `(:false)`,
+			Out: `[:false]`,
+		},
+		{
+			In:  `(:false :true :true)`,
+			Out: `[:false]`,
+		},
+		{
+			In:  `(:true "hello")`,
+			Out: `[:true]`,
+		},
+		{
+			In:  `(:true (echo "hello" (echo "world")))`,
+			Out: `[:true]`,
+		},
+		{
+			In:  `(:false (echo "hello" (echo "world")))`,
+			Out: `[:false]`,
+		},
+		{
+			In:  `(:true (echo "hello" "world!"))`,
+			Out: `[:true]`,
+		},
+		{
+			In:  `(echo "hello" (echo (echo (echo "world!"))))`,
+			Out: `[["hello" "world!"]]`,
+		},
+		{
+			In:  `(:true (echo "hello" (echo (echo (echo "world!")))))`,
+			Out: `[:true]`,
+		},
+		{
 			In:  `(:false (echo "hello" "world!"))`,
-			Out: `[]`,
+			Out: `[:false]`,
 		},
 	}
 
@@ -278,6 +382,24 @@ func TestParserEvaluate(t *testing.T) {
 		return nil, nil
 	})
 
+	RegisterPrefix(":false", func(ctx *Context) (*Value, error) {
+		defer ctx.Exit(nil)
+
+		ctx.Yield(False)
+		return nil, nil
+	})
+
+	RegisterPrefix(":true", func(ctx *Context) (*Value, error) {
+		defer ctx.Exit(nil)
+
+		for ctx.Next() {
+			_ = ctx.Argument()
+		}
+
+		ctx.Yield(True)
+		return nil, nil
+	})
+
 	RegisterPrefix("echo", func(ctx *Context) (*Value, error) {
 		defer ctx.Exit(nil)
 
@@ -285,6 +407,7 @@ func TestParserEvaluate(t *testing.T) {
 			value := ctx.Argument()
 			ctx.Yield(value)
 		}
+
 		return nil, nil
 	})
 
@@ -312,6 +435,7 @@ func TestParserEvaluate(t *testing.T) {
 
 	RegisterPrefix("nop", func(ctx *Context) (*Value, error) {
 		defer ctx.Exit(nil)
+		ctx.Yield(Nil)
 
 		return nil, nil
 	})
@@ -323,6 +447,8 @@ func TestParserEvaluate(t *testing.T) {
 			value := ctx.Argument()
 			fmt.Printf("%s", value.raw())
 		}
+
+		ctx.Yield(Nil)
 		return nil, nil
 	})
 

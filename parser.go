@@ -126,7 +126,7 @@ type parser struct {
 func newParser(r io.Reader) *parser {
 	p := &parser{}
 	p.root = &Node{
-		Type:     NodeTypeExpression,
+		Type:     NodeTypeList,
 		Children: []*Node{},
 	}
 	p.lx = newLexer(r)
