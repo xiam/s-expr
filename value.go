@@ -51,6 +51,10 @@ var (
 	False = &Value{Type: ValueTypeBool, v: false}
 )
 
+func NewStringValue(v string) *Value {
+	return &Value{v: v, Type: ValueTypeString}
+}
+
 func NewValue(value interface{}) (*Value, error) {
 	switch v := value.(type) {
 	case []byte:
