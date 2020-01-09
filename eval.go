@@ -75,8 +75,6 @@ func (st *symbolTable) Get(name string) (*Value, error) {
 	return nil, errors.New("no such key")
 }
 
-type Function func(*Context) (*Value, error)
-
 type Context struct {
 	Parent *Context
 
@@ -307,12 +305,15 @@ func init() {
 }
 
 func RegisterPrefix(name string, fn Function) {
-	value, err := NewValue(fn)
-	if err != nil {
-		log.Fatal("RegisterPrefix: %w", err)
+	wrapper := func(ctx *Context) error {
+		if err := fn(ctx); err != nil {
+			ctx.Exit(err)
+			return err
+		}
+		ctx.Exit(nil)
+		return nil
 	}
-
-	if err := defaultContext.Set(name, value); err != nil {
+	if err := defaultContext.Set(name, NewFunctionValue(wrapper)); err != nil {
 		log.Fatal("RegisterPrefix: %w", err)
 	}
 }
@@ -327,7 +328,7 @@ func execArgument(ctx *Context, value *Value) (*Value, error) {
 		newCtx := NewClosure(ctx)
 		go func() {
 			defer newCtx.Exit(nil)
-			if _, err := value.Function()(newCtx); err != nil {
+			if err := value.Function()(newCtx); err != nil {
 				panic(err.Error())
 			}
 		}()
@@ -340,15 +341,18 @@ func execArgument(ctx *Context, value *Value) (*Value, error) {
 func evalFunc(ctx *Context, values []*Value) (*Value, error) {
 	fn, err := ctx.Get(values[0].raw())
 	if err != nil {
-		return NewValue(Function(func(ctx *Context) (*Value, error) {
+		return NewValue(Function(func(ctx *Context) error {
 			defer ctx.Close()
-			value, _ := execArgument(ctx, values[0])
+			value, err := execArgument(ctx, values[0])
+			if err != nil {
+				return err
+			}
 			ctx.Yield(value)
-			return nil, nil
+			return nil
 		}))
 	}
 
-	return NewValue(Function(func(ctx *Context) (*Value, error) {
+	return NewValue(Function(func(ctx *Context) error {
 		fnCtx := NewClosure(ctx)
 
 		go func() {
@@ -373,7 +377,7 @@ func evalFunc(ctx *Context, values []*Value) (*Value, error) {
 			ctx.Yield(result.List()[i])
 		}
 
-		return nil, nil
+		return nil
 
 	}))
 }
@@ -404,7 +408,7 @@ func evalExpr(ctx *Context, nodes []*Node) (Function, error) {
 	}
 
 	args := nodes[1:]
-	wrapper, err := NewValue(Function(func(ctx *Context) (*Value, error) {
+	wrapper, err := NewValue(Function(func(ctx *Context) error {
 		fnCtx := NewClosure(ctx)
 
 		go func() error {
@@ -431,8 +435,7 @@ func evalExpr(ctx *Context, nodes []*Node) (Function, error) {
 		}()
 
 		go func() error {
-			_, err := fn.Function()(fnCtx)
-			if err != nil {
+			if err := fn.Function()(fnCtx); err != nil {
 				return err
 			}
 			return nil
@@ -440,22 +443,25 @@ func evalExpr(ctx *Context, nodes []*Node) (Function, error) {
 
 		collected, err := fnCtx.Collect()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		if len(collected) == 1 {
 			ctx.Yield(collected[0])
-			return nil, nil
+			return nil
 		}
 
 		result, err := NewValue(collected)
+		if err != nil {
+			return err
+		}
 		ctx.Yield(result)
 
-		return nil, nil
+		return nil
 	}))
 
 	if err != nil {
@@ -505,8 +511,7 @@ func evalContextExpression(ctx *Context, nodes []*Node) error {
 	fnVal.name = value.raw()
 
 	go func() error {
-		_, err = fnVal.Function()(fnCtx)
-		if err != nil {
+		if err := fnVal.Function()(fnCtx); err != nil {
 			return err
 		}
 		return nil
@@ -640,8 +645,7 @@ func evalContext(ctx *Context, node *Node) error {
 				//defer execCtx.Close()
 				defer execCtx.Exit(nil)
 
-				_, err := fn.Function()(execCtx)
-				if err != nil {
+				if err := fn.Function()(execCtx); err != nil {
 					log.Printf("ERR: %v", err)
 				}
 			}()

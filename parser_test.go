@@ -368,62 +368,52 @@ func TestParserEvaluate(t *testing.T) {
 		},
 	}
 
-	RegisterPrefix("+", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
-
+	RegisterPrefix("+", func(ctx *Context) error {
 		result := int64(0)
 		for ctx.Next() {
 			value, err := execArgument(ctx, ctx.Argument())
 			if err != nil {
-				panic(err.Error())
+				return err
 			}
 			result += value.Int()
 		}
 
 		value, err := NewValue(result)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		ctx.Yield(value)
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix(":false", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
-
+	RegisterPrefix(":false", func(ctx *Context) error {
 		ctx.Yield(False)
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix(":true", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
-
+	RegisterPrefix(":true", func(ctx *Context) error {
 		for ctx.Next() {
 			_ = ctx.Argument()
 		}
 
 		ctx.Yield(True)
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix("echo", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
-
+	RegisterPrefix("echo", func(ctx *Context) error {
 		for ctx.Next() {
 			value, err := execArgument(ctx, ctx.Argument())
 			if err != nil {
-				panic(err.Error())
+				return err
 			}
 			ctx.Yield(value)
 		}
 
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix("=", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
-
+	RegisterPrefix("=", func(ctx *Context) error {
 		var first *Value
 		for ctx.Next() {
 			value := ctx.Argument()
@@ -435,24 +425,21 @@ func TestParserEvaluate(t *testing.T) {
 
 			if (*first).raw() != value.raw() {
 				ctx.Yield(False)
-				return nil, nil
+				return nil
 			}
 		}
 
 		ctx.Yield(True)
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix("nop", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
+	RegisterPrefix("nop", func(ctx *Context) error {
 		ctx.Yield(Nil)
 
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix("defn", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
-
+	RegisterPrefix("defn", func(ctx *Context) error {
 		var name, params, fn *Value
 
 		for i := 0; ctx.Next(); i++ {
@@ -470,7 +457,7 @@ func TestParserEvaluate(t *testing.T) {
 
 		paramsList := params.List()
 
-		wrapperFn, _ := NewValue(Function(func(ctx *Context) (*Value, error) {
+		wrapperFn, _ := NewValue(Function(func(ctx *Context) error {
 			for i := 0; ctx.Next() && i < len(paramsList); i++ {
 				ctx.Set(paramsList[i].raw(), ctx.Argument())
 			}
@@ -480,10 +467,10 @@ func TestParserEvaluate(t *testing.T) {
 		ctx.Set(name.raw(), wrapperFn)
 
 		ctx.Yield(True)
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix("print", func(ctx *Context) (*Value, error) {
+	RegisterPrefix("print", func(ctx *Context) error {
 		defer ctx.Exit(nil)
 
 		for ctx.Next() {
@@ -492,12 +479,10 @@ func TestParserEvaluate(t *testing.T) {
 		}
 
 		ctx.Yield(Nil)
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix("get", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
-
+	RegisterPrefix("get", func(ctx *Context) error {
 		var name *Value
 		for i := 0; ctx.Next(); i++ {
 			argument := ctx.Argument()
@@ -505,23 +490,21 @@ func TestParserEvaluate(t *testing.T) {
 			case 0:
 				name = argument
 			default:
-				return nil, errors.New("expecting one argument")
+				return errors.New("expecting one argument")
 			}
 		}
 
 		value, err := ctx.Get(name.raw())
 		if err != nil {
 			ctx.Yield(Nil)
-			return nil, nil
+			return nil
 		}
 
 		ctx.Yield(value)
-		return nil, nil
+		return nil
 	})
 
-	RegisterPrefix("set", func(ctx *Context) (*Value, error) {
-		defer ctx.Exit(nil)
-
+	RegisterPrefix("set", func(ctx *Context) error {
 		var name, value *Value
 		for i := 0; ctx.Next(); i++ {
 			argument := ctx.Argument()
@@ -531,14 +514,14 @@ func TestParserEvaluate(t *testing.T) {
 			case 1:
 				value = argument
 			default:
-				return nil, errors.New("expecting two arguments")
+				return errors.New("expecting two arguments")
 			}
 		}
 
 		ctx.Set(name.raw(), value)
 		ctx.Yield(value)
 
-		return nil, nil
+		return nil
 	})
 
 	for i := range testCases {

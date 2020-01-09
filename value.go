@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+type Function func(*Context) error
+
 type ValueType uint8
 
 const (
@@ -50,6 +52,10 @@ var (
 	True  = &Value{Type: ValueTypeBool, v: true}
 	False = &Value{Type: ValueTypeBool, v: false}
 )
+
+func NewFunctionValue(v Function) *Value {
+	return &Value{v: v, Type: ValueTypeFunction}
+}
 
 func NewStringValue(v string) *Value {
 	return &Value{v: v, Type: ValueTypeString}
