@@ -48,10 +48,20 @@ type Value struct {
 }
 
 var (
-	Nil   = &Value{Type: ValueTypeNil}
-	True  = &Value{Type: ValueTypeBool, v: true}
-	False = &Value{Type: ValueTypeBool, v: false}
+	Nil   = NewAtomValue(":nil")
+	True  = NewAtomValue(":true")
+	False = NewAtomValue(":false")
 )
+
+func Eq(a *Value, b *Value) bool {
+	if a.Type != b.Type {
+		return false
+	}
+	if a.v != b.v {
+		return false
+	}
+	return true
+}
 
 func NewBinaryValue(v []byte) *Value {
 	return &Value{v: v, Type: ValueTypeBinary}
@@ -59,6 +69,10 @@ func NewBinaryValue(v []byte) *Value {
 
 func NewStringValue(v string) *Value {
 	return &Value{v: v, Type: ValueTypeString}
+}
+
+func NewAtomValue(v string) *Value {
+	return &Value{v: v, Type: ValueTypeAtom}
 }
 
 func NewIntValue(v int64) *Value {
