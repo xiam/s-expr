@@ -2,6 +2,7 @@ package sexpr
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 )
@@ -164,6 +165,7 @@ func (v Value) String() string {
 }
 
 func (v Value) Int() int64 {
+	log.Printf("V: %#v", v)
 	return v.v.(int64)
 }
 
