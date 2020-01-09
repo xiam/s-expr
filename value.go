@@ -53,12 +53,36 @@ var (
 	False = &Value{Type: ValueTypeBool, v: false}
 )
 
-func NewFunctionValue(v Function) *Value {
-	return &Value{v: v, Type: ValueTypeFunction}
+func NewBinaryValue(v []byte) *Value {
+	return &Value{v: v, Type: ValueTypeBinary}
 }
 
 func NewStringValue(v string) *Value {
 	return &Value{v: v, Type: ValueTypeString}
+}
+
+func NewIntValue(v int64) *Value {
+	return &Value{v: v, Type: ValueTypeInt}
+}
+
+func NewFloatValue(v float64) *Value {
+	return &Value{v: v, Type: ValueTypeFloat}
+}
+
+func NewBoolValue(v bool) *Value {
+	return &Value{v: v, Type: ValueTypeBool}
+}
+
+func NewMapValue(v map[Value]*Value) *Value {
+	return &Value{v: v, Type: ValueTypeMap}
+}
+
+func NewListValue(v []*Value) *Value {
+	return &Value{v: v, Type: ValueTypeList}
+}
+
+func NewFunctionValue(v Function) *Value {
+	return &Value{v: v, Type: ValueTypeFunction}
 }
 
 func NewValue(value interface{}) (*Value, error) {

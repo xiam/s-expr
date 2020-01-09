@@ -102,6 +102,20 @@ type Context struct {
 	st *symbolTable
 }
 
+func (ctx *Context) IsExecutable() bool {
+	return ctx.executable
+}
+
+func (ctx *Context) NonExecutable() *Context {
+	ctx.executable = false
+	return ctx
+}
+
+func (ctx *Context) Executable() *Context {
+	ctx.executable = true
+	return ctx
+}
+
 func (ctx *Context) closeIn() {
 	if ctx.inClosed {
 		return
@@ -143,13 +157,20 @@ func (ctx *Context) Arguments() ([]*Value, error) {
 	}
 	args := []*Value{}
 	for ctx.Next() {
-		args = append(args, ctx.Argument())
+		arg, err := ctx.Argument()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
 	}
 	return args, nil
 }
 
-func (ctx *Context) Argument() *Value {
-	return ctx.lastArgument
+func (ctx *Context) Argument() (*Value, error) {
+	if ctx.executable {
+		return execArgument(ctx, ctx.lastArgument)
+	}
+	return ctx.lastArgument, nil
 }
 
 func (ctx *Context) Exit(err error) {
@@ -185,14 +206,12 @@ func (ctx *Context) Push(value *Value) error {
 }
 
 func (ctx *Context) Return(values ...*Value) error {
-	defer ctx.Exit(nil)
-
-	for i := range values {
-		err := ctx.Yield(values[i])
-		if err != nil {
-			return err
-		}
+	if err := ctx.Yield(values...); err != nil {
+		ctx.Exit(err)
+		return err
 	}
+
+	ctx.Exit(nil)
 	return nil
 }
 
@@ -208,7 +227,16 @@ func (ctx *Context) Accept() bool {
 	return false
 }
 
-func (ctx *Context) Yield(value *Value) error {
+func (ctx *Context) Yield(values ...*Value) error {
+	for i := range values {
+		if err := ctx.yield(values[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ctx *Context) yield(value *Value) error {
 	if ctx.outClosed {
 		return nil
 	}
@@ -272,7 +300,7 @@ func (ctx *Context) Get(name string) (*Value, error) {
 func NewClosure(parent *Context) *Context {
 	ctx := NewContext(parent)
 	ctx.st = parent.st
-	ctx.executable = false
+	//ctx.executable = false
 	return ctx
 }
 
@@ -353,7 +381,7 @@ func evalFunc(ctx *Context, values []*Value) (*Value, error) {
 	}
 
 	return NewValue(Function(func(ctx *Context) error {
-		fnCtx := NewClosure(ctx)
+		fnCtx := NewClosure(ctx).NonExecutable()
 
 		go func() {
 			defer fnCtx.Close()
@@ -380,162 +408,6 @@ func evalFunc(ctx *Context, values []*Value) (*Value, error) {
 		return nil
 
 	}))
-}
-
-func evalExpr(ctx *Context, nodes []*Node) (Function, error) {
-	expr := nodes[0]
-
-	newCtx := NewClosure(ctx)
-	go func() {
-		defer newCtx.Exit(nil)
-
-		if err := evalContext(newCtx, expr); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	value, err := newCtx.Output()
-	if err != nil {
-		return nil, err
-	}
-
-	fn, err := ctx.Get(value.raw())
-	if err != nil {
-		if len(nodes) > 1 {
-			return nil, errors.New("unexpected arguments")
-		}
-		return nil, err
-	}
-
-	args := nodes[1:]
-	wrapper, err := NewValue(Function(func(ctx *Context) error {
-		fnCtx := NewClosure(ctx)
-
-		go func() error {
-			defer fnCtx.Close()
-
-			newCtx := NewClosure(fnCtx)
-			newCtx.executable = false
-
-			for i := 0; i < len(args) && fnCtx.Accept(); i++ {
-				go func() {
-					if err := evalContext(newCtx, args[i]); err != nil {
-						return
-					}
-				}()
-				result, err := newCtx.Output()
-				if err != nil {
-					panic(err.Error())
-					return err
-				}
-				fnCtx.Push(result)
-			}
-
-			return nil
-		}()
-
-		go func() error {
-			if err := fn.Function()(fnCtx); err != nil {
-				return err
-			}
-			return nil
-		}()
-
-		collected, err := fnCtx.Collect()
-		if err != nil {
-			return err
-		}
-
-		if err != nil {
-			return err
-		}
-
-		if len(collected) == 1 {
-			ctx.Yield(collected[0])
-			return nil
-		}
-
-		result, err := NewValue(collected)
-		if err != nil {
-			return err
-		}
-		ctx.Yield(result)
-
-		return nil
-	}))
-
-	if err != nil {
-		return nil, err
-	}
-	wrapper.name = value.raw()
-
-	return wrapper.Function(), nil
-}
-
-func evalContextExpression(ctx *Context, nodes []*Node) error {
-	fnCtx := NewClosure(ctx)
-	go func() {
-		defer fnCtx.Close()
-
-		newCtx := NewContext(fnCtx)
-		defer newCtx.Exit(nil)
-
-		for i := 0; i < len(nodes) && fnCtx.Accept(); i++ {
-			go func() {
-				if err := evalContext(newCtx, nodes[i]); err != nil {
-					return
-				}
-			}()
-
-			result, err := newCtx.Output()
-			if err != nil {
-				return
-			}
-			fnCtx.Push(result)
-		}
-	}()
-
-	if !fnCtx.Next() {
-		return errors.New("no more stuff")
-	}
-	value := fnCtx.Argument()
-
-	fnVal, err := ctx.Get(value.raw())
-	if err != nil {
-		if len(nodes) > 1 {
-			return errors.New("unexpected arguments")
-		}
-		ctx.Yield(value)
-		return nil
-	}
-	fnVal.name = value.raw()
-
-	go func() error {
-		if err := fnVal.Function()(fnCtx); err != nil {
-			return err
-		}
-		return nil
-	}()
-
-	collected, err := fnCtx.Collect()
-	if err != nil {
-		return err
-	}
-
-	if err != nil {
-		return err
-	}
-
-	if len(collected) == 1 {
-		ctx.Yield(collected[0])
-		return nil
-	}
-
-	result, err := NewValue(collected)
-
-	ctx.Yield(result)
-
-	return nil
 }
 
 func evalContextList(ctx *Context, nodes []*Node) error {
@@ -615,8 +487,7 @@ func evalContext(ctx *Context, node *Node) error {
 
 	case NodeTypeExpression:
 
-		newCtx := NewClosure(ctx)
-		newCtx.executable = false
+		newCtx := NewClosure(ctx).NonExecutable()
 		go func() error {
 			defer newCtx.Exit(nil)
 
@@ -638,11 +509,9 @@ func evalContext(ctx *Context, node *Node) error {
 			return err
 		}
 
-		if ctx.executable {
-
+		if ctx.IsExecutable() {
 			execCtx := NewClosure(ctx)
 			go func() {
-				//defer execCtx.Close()
 				defer execCtx.Exit(nil)
 
 				if err := fn.Function()(execCtx); err != nil {
@@ -661,11 +530,9 @@ func evalContext(ctx *Context, node *Node) error {
 		}
 
 		return ctx.Yield(fn)
-
-		return nil
 	}
 
-	return nil
+	panic("unreachable")
 }
 
 func eval(node *Node) (*Context, interface{}, error) {

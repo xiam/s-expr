@@ -371,19 +371,13 @@ func TestParserEvaluate(t *testing.T) {
 	RegisterPrefix("+", func(ctx *Context) error {
 		result := int64(0)
 		for ctx.Next() {
-			value, err := execArgument(ctx, ctx.Argument())
+			value, err := ctx.Argument()
 			if err != nil {
 				return err
 			}
 			result += value.Int()
 		}
-
-		value, err := NewValue(result)
-		if err != nil {
-			return err
-		}
-
-		ctx.Yield(value)
+		ctx.Yield(NewIntValue(result))
 		return nil
 	})
 
@@ -394,7 +388,10 @@ func TestParserEvaluate(t *testing.T) {
 
 	RegisterPrefix(":true", func(ctx *Context) error {
 		for ctx.Next() {
-			_ = ctx.Argument()
+			_, err := ctx.Argument()
+			if err != nil {
+				return err
+			}
 		}
 
 		ctx.Yield(True)
@@ -403,7 +400,7 @@ func TestParserEvaluate(t *testing.T) {
 
 	RegisterPrefix("echo", func(ctx *Context) error {
 		for ctx.Next() {
-			value, err := execArgument(ctx, ctx.Argument())
+			value, err := ctx.Argument()
 			if err != nil {
 				return err
 			}
@@ -416,7 +413,10 @@ func TestParserEvaluate(t *testing.T) {
 	RegisterPrefix("=", func(ctx *Context) error {
 		var first *Value
 		for ctx.Next() {
-			value := ctx.Argument()
+			value, err := ctx.Argument()
+			if err != nil {
+				return err
+			}
 
 			if first == nil {
 				first = value
@@ -443,7 +443,10 @@ func TestParserEvaluate(t *testing.T) {
 		var name, params, fn *Value
 
 		for i := 0; ctx.Next(); i++ {
-			arg := ctx.Argument()
+			arg, err := ctx.Argument()
+			if err != nil {
+				return err
+			}
 
 			switch i {
 			case 0:
@@ -459,7 +462,11 @@ func TestParserEvaluate(t *testing.T) {
 
 		wrapperFn, _ := NewValue(Function(func(ctx *Context) error {
 			for i := 0; ctx.Next() && i < len(paramsList); i++ {
-				ctx.Set(paramsList[i].raw(), ctx.Argument())
+				arg, err := ctx.Argument()
+				if err != nil {
+					return err
+				}
+				ctx.Set(paramsList[i].raw(), arg)
 			}
 			return fn.Function()(ctx)
 		}))
@@ -471,10 +478,11 @@ func TestParserEvaluate(t *testing.T) {
 	})
 
 	RegisterPrefix("print", func(ctx *Context) error {
-		defer ctx.Exit(nil)
-
 		for ctx.Next() {
-			value := ctx.Argument()
+			value, err := ctx.Argument()
+			if err != nil {
+				return err
+			}
 			fmt.Printf("%s", value.raw())
 		}
 
@@ -485,7 +493,10 @@ func TestParserEvaluate(t *testing.T) {
 	RegisterPrefix("get", func(ctx *Context) error {
 		var name *Value
 		for i := 0; ctx.Next(); i++ {
-			argument := ctx.Argument()
+			argument, err := ctx.Argument()
+			if err != nil {
+				return err
+			}
 			switch i {
 			case 0:
 				name = argument
@@ -507,7 +518,10 @@ func TestParserEvaluate(t *testing.T) {
 	RegisterPrefix("set", func(ctx *Context) error {
 		var name, value *Value
 		for i := 0; ctx.Next(); i++ {
-			argument := ctx.Argument()
+			argument, err := ctx.Argument()
+			if err != nil {
+				return err
+			}
 			switch i {
 			case 0:
 				name = argument

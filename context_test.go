@@ -94,7 +94,9 @@ func TestContextSequentialInput(t *testing.T) {
 		{
 			i := 0
 			for ctx.Next() {
-				value := ctx.Argument()
+				value, err := ctx.Argument()
+				assert.NoError(t, err)
+
 				switch i {
 				case 0:
 					assert.Equal(t, True, value)
@@ -151,7 +153,9 @@ func TestContextInterruptedSequentialInput(t *testing.T) {
 		{
 			i := 0
 			for ctx.Next() {
-				value := ctx.Argument()
+				value, err := ctx.Argument()
+				assert.NoError(t, err)
+
 				switch i {
 				case 0:
 					assert.Equal(t, True, value)
@@ -217,7 +221,8 @@ func TestContextEcho(t *testing.T) {
 		{
 			i := 0
 			for ctx.Next() {
-				value := ctx.Argument()
+				value, err := ctx.Argument()
+				assert.NoError(t, err)
 				assert.NotNil(t, value)
 
 				switch i {
@@ -227,7 +232,7 @@ func TestContextEcho(t *testing.T) {
 					assert.Equal(t, False, value)
 				}
 
-				err := ctx.Yield(value)
+				err = ctx.Yield(value)
 				assert.NoError(t, err)
 
 				i++
