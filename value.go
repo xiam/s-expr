@@ -88,21 +88,21 @@ func NewFunctionValue(v Function) *Value {
 func NewValue(value interface{}) (*Value, error) {
 	switch v := value.(type) {
 	case []byte:
-		return &Value{v: v, Type: ValueTypeBinary}, nil
+		return NewBinaryValue(v), nil
 	case string:
-		return &Value{v: v, Type: ValueTypeString}, nil
+		return NewStringValue(v), nil
 	case int64:
-		return &Value{v: v, Type: ValueTypeInt}, nil
+		return NewIntValue(v), nil
 	case float64:
-		return &Value{v: v, Type: ValueTypeFloat}, nil
+		return NewFloatValue(v), nil
 	case bool:
-		return &Value{v: v, Type: ValueTypeBool}, nil
+		return NewBoolValue(v), nil
 	case map[Value]*Value:
-		return &Value{v: v, Type: ValueTypeMap}, nil
+		return NewMapValue(v), nil
 	case []*Value:
-		return &Value{v: v, Type: ValueTypeList}, nil
+		return NewListValue(v), nil
 	case Function:
-		return &Value{v: v, Type: ValueTypeFunction}, nil
+		return NewFunctionValue(v), nil
 	}
 	return Nil, fmt.Errorf("invalid value %v", value)
 }

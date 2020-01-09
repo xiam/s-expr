@@ -300,7 +300,6 @@ func (ctx *Context) Get(name string) (*Value, error) {
 func NewClosure(parent *Context) *Context {
 	ctx := NewContext(parent)
 	ctx.st = parent.st
-	//ctx.executable = false
 	return ctx
 }
 
@@ -360,13 +359,13 @@ func execArgument(ctx *Context, value *Value) (*Value, error) {
 				panic(err.Error())
 			}
 		}()
-		col, _ := newCtx.Collect()
-		return col[0], nil
+		col, err := newCtx.Collect()
+		return col[0], err
 	}
 	return value, nil
 }
 
-func evalFunc(ctx *Context, values []*Value) (*Value, error) {
+func prepareFunc(ctx *Context, values []*Value) (*Value, error) {
 	fn, err := ctx.Get(values[0].raw())
 	if err != nil {
 		return NewValue(Function(func(ctx *Context) error {
@@ -381,7 +380,7 @@ func evalFunc(ctx *Context, values []*Value) (*Value, error) {
 	}
 
 	return NewValue(Function(func(ctx *Context) error {
-		fnCtx := NewClosure(ctx).NonExecutable()
+		fnCtx := NewClosure(ctx).Executable()
 
 		go func() {
 			defer fnCtx.Close()
@@ -400,6 +399,7 @@ func evalFunc(ctx *Context, values []*Value) (*Value, error) {
 		result, err := fnCtx.Result()
 		if err != nil {
 			log.Printf("err.res: %v", err)
+			return err
 		}
 		for i := 0; i < len(result.List()); i++ {
 			ctx.Yield(result.List()[i])
@@ -504,7 +504,7 @@ func evalContext(ctx *Context, node *Node) error {
 			return err
 		}
 
-		fn, err := evalFunc(ctx, values.List())
+		fn, err := prepareFunc(ctx, values.List())
 		if err != nil {
 			return err
 		}

@@ -442,6 +442,7 @@ func TestParserEvaluate(t *testing.T) {
 	RegisterPrefix("defn", func(ctx *Context) error {
 		var name, params, fn *Value
 
+		ctx = ctx.NonExecutable()
 		for i := 0; ctx.Next(); i++ {
 			arg, err := ctx.Argument()
 			if err != nil {
@@ -460,7 +461,7 @@ func TestParserEvaluate(t *testing.T) {
 
 		paramsList := params.List()
 
-		wrapperFn, _ := NewValue(Function(func(ctx *Context) error {
+		wrapperFn := NewFunctionValue(Function(func(ctx *Context) error {
 			for i := 0; ctx.Next() && i < len(paramsList); i++ {
 				arg, err := ctx.Argument()
 				if err != nil {
