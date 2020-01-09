@@ -368,7 +368,7 @@ func TestParserEvaluate(t *testing.T) {
 		},
 	}
 
-	RegisterPrefix("+", func(ctx *Context) error {
+	Defn("+", func(ctx *Context) error {
 		result := int64(0)
 		for ctx.Next() {
 			value, err := ctx.Argument()
@@ -381,12 +381,12 @@ func TestParserEvaluate(t *testing.T) {
 		return nil
 	})
 
-	RegisterPrefix(":false", func(ctx *Context) error {
+	Defn(":false", func(ctx *Context) error {
 		ctx.Yield(False)
 		return nil
 	})
 
-	RegisterPrefix(":true", func(ctx *Context) error {
+	Defn(":true", func(ctx *Context) error {
 		for ctx.Next() {
 			_, err := ctx.Argument()
 			if err != nil {
@@ -398,7 +398,7 @@ func TestParserEvaluate(t *testing.T) {
 		return nil
 	})
 
-	RegisterPrefix("echo", func(ctx *Context) error {
+	Defn("echo", func(ctx *Context) error {
 		for ctx.Next() {
 			value, err := ctx.Argument()
 			if err != nil {
@@ -410,7 +410,7 @@ func TestParserEvaluate(t *testing.T) {
 		return nil
 	})
 
-	RegisterPrefix("=", func(ctx *Context) error {
+	Defn("=", func(ctx *Context) error {
 		var first *Value
 		for ctx.Next() {
 			value, err := ctx.Argument()
@@ -433,13 +433,13 @@ func TestParserEvaluate(t *testing.T) {
 		return nil
 	})
 
-	RegisterPrefix("nop", func(ctx *Context) error {
+	Defn("nop", func(ctx *Context) error {
 		ctx.Yield(Nil)
 
 		return nil
 	})
 
-	RegisterPrefix("defn", func(ctx *Context) error {
+	Defn("defn", func(ctx *Context) error {
 		var name, params, fn *Value
 
 		ctx = ctx.NonExecutable()
@@ -478,7 +478,7 @@ func TestParserEvaluate(t *testing.T) {
 		return nil
 	})
 
-	RegisterPrefix("print", func(ctx *Context) error {
+	Defn("print", func(ctx *Context) error {
 		for ctx.Next() {
 			value, err := ctx.Argument()
 			if err != nil {
@@ -491,7 +491,7 @@ func TestParserEvaluate(t *testing.T) {
 		return nil
 	})
 
-	RegisterPrefix("get", func(ctx *Context) error {
+	Defn("get", func(ctx *Context) error {
 		var name *Value
 		for i := 0; ctx.Next(); i++ {
 			argument, err := ctx.Argument()
@@ -516,7 +516,7 @@ func TestParserEvaluate(t *testing.T) {
 		return nil
 	})
 
-	RegisterPrefix("set", func(ctx *Context) error {
+	Defn("set", func(ctx *Context) error {
 		var name, value *Value
 		for i := 0; ctx.Next(); i++ {
 			argument, err := ctx.Argument()

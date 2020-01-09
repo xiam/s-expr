@@ -331,7 +331,7 @@ func init() {
 	defaultContext.executable = true
 }
 
-func RegisterPrefix(name string, fn Function) {
+func Defn(name string, fn Function) {
 	wrapper := func(ctx *Context) error {
 		if err := fn(ctx); err != nil {
 			ctx.Exit(err)
@@ -341,7 +341,7 @@ func RegisterPrefix(name string, fn Function) {
 		return nil
 	}
 	if err := defaultContext.Set(name, NewFunctionValue(wrapper)); err != nil {
-		log.Fatal("RegisterPrefix: %w", err)
+		log.Fatal("Defn: %w", err)
 	}
 }
 
