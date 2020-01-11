@@ -2,9 +2,8 @@ package sexpr
 
 import (
 	"errors"
-	//"fmt"
+	"fmt"
 	"log"
-	"sync"
 )
 
 var (
@@ -12,320 +11,13 @@ var (
 	errStreamClosed   = errors.New("stream is closed")
 )
 
-type contextState uint8
-
-const (
-	contextStateReady contextState = iota
-
-	contextStateAccept
-	contextStateInput
-	contextStateCloseInput
-	contextStateOutput
-	contextStateCloseOutput
-
-	contextStateError
-	contextStateDone
-)
-
-type contextMessage struct {
-	state   contextState
-	payload interface{}
-}
-
 var (
 	errUndefinedValue    = errors.New("undefined value")
 	errUndefinedFunction = errors.New("undefined function")
 	errClosedChannel     = errors.New("closed channel")
 )
 
-type symbolTableType uint8
-
-const (
-	symbolTableTypeValue symbolTableType = iota
-	symbolTableTypeDict
-)
-
-type symbolTable struct {
-	t symbolTableType
-	n map[string]*symbolTable
-	v *Value
-}
-
-func (st *symbolTable) Set(name string, value *Value) error {
-	if st.t != symbolTableTypeDict {
-		return errors.New("not a dictionary")
-	}
-	st.n[name] = &symbolTable{
-		t: symbolTableTypeValue,
-		v: value,
-	}
-	return nil
-}
-
-func (st *symbolTable) Get(name string) (*Value, error) {
-	if st.t != symbolTableTypeDict {
-		return nil, errors.New("not a dictionary")
-	}
-	if v, ok := st.n[name]; ok {
-		if v.t == symbolTableTypeValue {
-			return v.v, nil
-		}
-		return nil, errors.New("key is not a value")
-	}
-	return nil, errors.New("no such key")
-}
-
-type Context struct {
-	Parent *Context
-
-	executable bool
-
-	ticket chan struct{}
-
-	inMu  sync.Mutex
-	mu    sync.Mutex
-	argMu sync.Mutex
-
-	in       chan *Value
-	inClosed bool
-
-	doneAccept chan struct{}
-
-	out       chan *Value
-	outClosed bool
-
-	accept chan struct{}
-
-	exitStatus   error
-	lastArgument *Value
-
-	st *symbolTable
-}
-
-func (ctx *Context) IsExecutable() bool {
-	return ctx.executable
-}
-
-func (ctx *Context) NonExecutable() *Context {
-	ctx.executable = false
-	return ctx
-}
-
-func (ctx *Context) Executable() *Context {
-	ctx.executable = true
-	return ctx
-}
-
-func (ctx *Context) closeIn() {
-	if ctx.inClosed {
-		return
-	}
-
-	close(ctx.accept)
-	close(ctx.in)
-
-	ctx.inClosed = true
-}
-
-func (ctx *Context) exit(err error) error {
-	if err != nil {
-		ctx.exitStatus = err
-	}
-	return nil
-}
-
-func (ctx *Context) Next() bool {
-	ctx.mu.Lock()
-	if ctx.inClosed {
-		ctx.mu.Unlock()
-		return false
-	}
-	ctx.accept <- struct{}{}
-	ctx.mu.Unlock()
-
-	var ok bool
-	ctx.lastArgument, ok = <-ctx.in
-	if !ok {
-		return false
-	}
-	return true
-}
-
-func (ctx *Context) Arguments() ([]*Value, error) {
-	if ctx.inClosed {
-		return nil, errStreamClosed
-	}
-	args := []*Value{}
-	for ctx.Next() {
-		arg, err := ctx.Argument()
-		if err != nil {
-			return nil, err
-		}
-		args = append(args, arg)
-	}
-	return args, nil
-}
-
-func (ctx *Context) Argument() (*Value, error) {
-	if ctx.executable {
-		return execArgument(ctx, ctx.lastArgument)
-	}
-	return ctx.lastArgument, nil
-}
-
-func (ctx *Context) Exit(err error) {
-	if ctx.outClosed {
-		return
-	}
-
-	close(ctx.out)
-	ctx.outClosed = true
-	ctx.Close()
-}
-
-func (ctx *Context) Close() {
-	ctx.mu.Lock()
-	defer ctx.mu.Unlock()
-	if ctx.inClosed {
-		return
-	}
-	ctx.inClosed = true
-	close(ctx.doneAccept)
-	close(ctx.accept)
-	close(ctx.in)
-}
-
-func (ctx *Context) Push(value *Value) error {
-	ctx.mu.Lock()
-	defer ctx.mu.Unlock()
-	if ctx.inClosed {
-		return errors.New("channel is closed")
-	}
-	ctx.in <- value
-	return nil
-}
-
-func (ctx *Context) Return(values ...*Value) error {
-	if err := ctx.Yield(values...); err != nil {
-		ctx.Exit(err)
-		return err
-	}
-
-	ctx.Exit(nil)
-	return nil
-}
-
-func (ctx *Context) Accept() bool {
-	if ctx.inClosed {
-		return false
-	}
-	select {
-	case <-ctx.doneAccept:
-	case <-ctx.accept:
-		return true
-	}
-	return false
-}
-
-func (ctx *Context) Yield(values ...*Value) error {
-	for i := range values {
-		if err := ctx.yield(values[i]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (ctx *Context) yield(value *Value) error {
-	if ctx.outClosed {
-		return nil
-	}
-	if value == nil {
-		panic("can't yield nil value")
-	}
-	ctx.out <- value
-	return nil
-}
-
-func (ctx *Context) Output() (*Value, error) {
-	out, ok := <-ctx.out
-	if !ok {
-		return nil, errClosedChannel
-	}
-	return out, nil
-}
-
-func (ctx *Context) Result() (*Value, error) {
-	values, err := ctx.Collect()
-	if err != nil {
-		return nil, err
-	}
-	/*
-		if len(values) < 1 {
-			return Nil, nil
-		}
-	*/
-	return NewValue(values)
-}
-
-func (ctx *Context) Collect() ([]*Value, error) {
-	values := []*Value{}
-
-	for {
-		value, err := ctx.Output()
-		if err == errClosedChannel {
-			break
-		}
-		values = append(values, value)
-	}
-
-	return values, nil
-}
-
-func (ctx *Context) Set(name string, value *Value) error {
-	return ctx.st.Set(name, value)
-}
-
-func (ctx *Context) Get(name string) (*Value, error) {
-	fn, err := ctx.st.Get(name)
-	if err != nil {
-		if ctx.Parent == nil {
-			return nil, errUndefinedFunction
-		}
-		return ctx.Parent.Get(name)
-	}
-	return fn, nil
-}
-
-func NewClosure(parent *Context) *Context {
-	ctx := NewContext(parent)
-	ctx.st = parent.st
-	return ctx
-}
-
-func NewContext(parent *Context) *Context {
-	ctx := &Context{
-		Parent: parent,
-		ticket: make(chan struct{}),
-
-		accept:     make(chan struct{}, 1),
-		doneAccept: make(chan struct{}),
-
-		in:  make(chan *Value),
-		out: make(chan *Value),
-
-		st: &symbolTable{
-			t: symbolTableTypeDict,
-			n: make(map[string]*symbolTable),
-		},
-	}
-	if parent != nil {
-		ctx.executable = parent.executable
-	}
-	return ctx
-}
-
-var defaultContext = NewContext(nil)
+var defaultContext = NewContext(nil).Name("root")
 
 func init() {
 	defaultContext.executable = true
@@ -345,14 +37,10 @@ func Defn(name string, fn Function) {
 	}
 }
 
-type exprContext struct {
-	fn  *Value
-	ctx *Context
-}
-
 func execArgument(ctx *Context, value *Value) (*Value, error) {
-	if value.Type == ValueTypeFunction {
-		newCtx := NewClosure(ctx)
+	switch value.Type {
+	case ValueTypeFunction:
+		newCtx := NewContext(ctx).Name("argument")
 		go func() {
 			defer newCtx.Exit(nil)
 			if err := value.Function()(newCtx); err != nil {
@@ -361,51 +49,94 @@ func execArgument(ctx *Context, value *Value) (*Value, error) {
 		}()
 		col, err := newCtx.Collect()
 		return col[0], err
+	case ValueTypeList:
+		log.Fatalf("VALUE: %v", value)
 	}
 	return value, nil
 }
 
-func prepareFunc(ctx *Context, values []*Value) (*Value, error) {
-	fn, err := ctx.Get(values[0].raw())
-	if err != nil {
-		return NewValue(Function(func(ctx *Context) error {
-			defer ctx.Close()
-			value, err := execArgument(ctx, values[0])
-			if err != nil {
-				return err
-			}
-			ctx.Yield(value)
-			return nil
-		}))
-	}
+func execFunctionBody(ctx *Context, body *Value) error {
 
-	return NewValue(Function(func(ctx *Context) error {
-		fnCtx := NewClosure(ctx).Executable()
-
-		go func() {
-			defer fnCtx.Close()
-
-			for i := 1; i < len(values) && fnCtx.Accept(); i++ {
-				fnCtx.Push(values[i])
-			}
+	log.Printf("BODY: %#v", body)
+	switch body.Type {
+	case ValueTypeFunction:
+		newCtx := NewClosure(ctx).Name("exec-body")
+		log.Printf("ValueTypeFunction")
+		go func() error {
+			defer newCtx.Exit(nil)
+			return body.Function()(newCtx)
 		}()
-
-		go func() {
-			defer fnCtx.Exit(nil)
-
-			fn.Function()(fnCtx)
-		}()
-
-		result, err := fnCtx.Result()
+		values, err := newCtx.Result()
 		if err != nil {
-			log.Printf("err.res: %v", err)
 			return err
 		}
-		for i := 0; i < len(result.List()); i++ {
-			ctx.Yield(result.List()[i])
+		ctx.Yield(values.List()...)
+		return nil
+	case ValueTypeList:
+		log.Printf("ValueTypeList")
+		for _, item := range body.List() {
+			if err := execFunctionBody(ctx, item); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		panic("unhandled")
+	}
+}
+
+func prepareFunc(values []*Value) *Value {
+	return NewFunctionValue(Function(func(ctx *Context) error {
+
+		fnName := values[0].raw()
+
+		fn, err := ctx.Get(fnName)
+		if err != nil {
+			if err == errUndefinedFunction {
+				log.Fatalf("undefined function %q", fnName)
+				return fmt.Errorf("undefined function %q", fnName)
+			}
+			return err
 		}
 
-		return nil
+		log.Printf("EXEC CTX: %v - %v", fnName, ctx)
+
+		log.Printf("EXEC 1: %v", fnName)
+		defer log.Printf("EXEC 3: %v", fnName)
+		//fnCtx := NewClosure(ctx).Executable()
+
+		go func() {
+			defer ctx.Close()
+			//log.Printf("VALUES %v: %v", fnName, values)
+
+			for i := 1; i < len(values) && ctx.Accept(); i++ {
+				//fnCtx.
+				log.Printf("PUSH: %v", values[i])
+				ctx.Push(values[i])
+			}
+		}()
+
+		/*
+			go func() {
+				//defer fnCtx.Exit(nil)
+
+			}()
+		*/
+		log.Printf("EXEC 2: %v", fnName)
+		return fn.Function()(ctx)
+
+		/*
+			result, err := fnCtx.Result()
+			if err != nil {
+				log.Printf("err.res: %v", err)
+				return err
+			}
+			for i := 0; i < len(result.List()); i++ {
+				ctx.Yield(result.List()[i])
+			}
+
+			return nil
+		*/
 
 	}))
 }
@@ -426,12 +157,14 @@ func evalContext(ctx *Context, node *Node) error {
 
 	switch node.Type {
 	case NodeTypeAtom:
+		log.Printf("NodeTypeAtom")
 
 		return ctx.Yield(&node.Value)
 
 	case NodeTypeList:
+		log.Printf("NodeTypeList")
 
-		newCtx := NewContext(ctx)
+		newCtx := NewContext(ctx).Name("list")
 		go func() {
 			defer newCtx.Exit(nil)
 			err := evalContextList(newCtx, node.Children)
@@ -448,8 +181,9 @@ func evalContext(ctx *Context, node *Node) error {
 		return ctx.Yield(value)
 
 	case NodeTypeMap:
+		log.Printf("NodeTypeMap")
 
-		newCtx := NewContext(ctx)
+		newCtx := NewClosure(ctx).Name("map")
 		go func() error {
 			defer newCtx.Exit(nil)
 
@@ -486,8 +220,10 @@ func evalContext(ctx *Context, node *Node) error {
 		panic("unreachable")
 
 	case NodeTypeExpression:
+		log.Printf("NodeTypeExpression")
 
-		newCtx := NewClosure(ctx).NonExecutable()
+		newCtx := NewClosure(ctx).Name("expr-eval").NonExecutable()
+		log.Printf("PREPARE-START")
 		go func() error {
 			defer newCtx.Exit(nil)
 
@@ -504,18 +240,17 @@ func evalContext(ctx *Context, node *Node) error {
 			return err
 		}
 
-		fn, err := prepareFunc(ctx, values.List())
-		if err != nil {
-			return err
-		}
+		fn := prepareFunc(values.List())
+		log.Printf("PREPARE-END: %v", values.List())
 
 		if ctx.IsExecutable() {
-			execCtx := NewClosure(ctx)
+			execCtx := NewContext(ctx).Name("expr-exec")
+
 			go func() {
 				defer execCtx.Exit(nil)
 
 				if err := fn.Function()(execCtx); err != nil {
-					log.Printf("ERR: %v", err)
+					log.Fatalf("ERR: %v", err)
 				}
 			}()
 
@@ -523,9 +258,12 @@ func evalContext(ctx *Context, node *Node) error {
 			if err != nil {
 				return err
 			}
+			log.Printf("VALUES: %v", values)
+
 			if len(values.List()) == 1 {
 				return ctx.Yield(values.List()[0])
 			}
+
 			return ctx.Yield(values)
 		}
 
@@ -536,7 +274,7 @@ func evalContext(ctx *Context, node *Node) error {
 }
 
 func eval(node *Node) (*Context, interface{}, error) {
-	newCtx := NewContext(defaultContext)
+	newCtx := NewContext(defaultContext).Name("eval")
 
 	go func() {
 		defer newCtx.Exit(nil)
