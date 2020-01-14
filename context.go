@@ -3,7 +3,6 @@ package sexpr
 import (
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 )
@@ -42,7 +41,6 @@ type Context struct {
 
 func (ctx *Context) Name(name string) *Context {
 	ctx.name = name
-	log.Printf("*CTX: %v", ctx)
 	return ctx
 }
 
@@ -234,12 +232,10 @@ func (ctx *Context) Set(name string, value *Value) error {
 	if !ctx.executable {
 		return errors.New("cannot set on a non-executable context")
 	}
-	log.Printf("ctx: %v -- %v -> %v", ctx, name, value)
 	return ctx.st.Set(name, value)
 }
 
 func (ctx *Context) Get(name string) (*Value, error) {
-	log.Printf("ctx: %v <- %q ??", ctx, name)
 	value, err := ctx.st.Get(name)
 	if err != nil {
 		if ctx.Parent != nil {
@@ -247,22 +243,18 @@ func (ctx *Context) Get(name string) (*Value, error) {
 		}
 		return nil, err
 	}
-	log.Printf("ctx: %v <- %q: %v", ctx, name, value)
 	return value, nil
 }
 
 func NewClosure(parent *Context) *Context {
-	log.Printf("NewClosure")
 	ctx := NewContext(parent)
 	if parent != nil {
 		ctx.st = parent.st
-		log.Printf("*map: %v == %v", ctx, parent)
 	}
 	return ctx
 }
 
 func NewContext(parent *Context) *Context {
-	log.Printf("NewContext")
 	ctx := &Context{
 		id:     atomic.AddUint64(&ctxID, 1),
 		ticket: make(chan struct{}),
@@ -280,6 +272,5 @@ func NewContext(parent *Context) *Context {
 		ctx.executable = parent.executable
 		ctx.st = newSymbolTable(parent.st)
 	}
-	log.Printf("*CTX: %v -> %v", parent, ctx)
 	return ctx
 }
