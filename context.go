@@ -267,6 +267,7 @@ func NewContext(parent *Context) *Context {
 	}
 	if parent == nil {
 		ctx.st = newSymbolTable(nil)
+		ctx.executable = true
 	} else {
 		ctx.Parent = parent
 		ctx.executable = parent.executable

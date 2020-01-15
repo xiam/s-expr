@@ -1,4 +1,4 @@
-package sexpr
+package lexer
 
 import (
 	"log"
@@ -8,7 +8,6 @@ import (
 )
 
 func TestLexerScanner(t *testing.T) {
-
 	testCases := []string{
 		`1`,
 
@@ -98,7 +97,7 @@ func TestLexerScanner(t *testing.T) {
 
 	{
 		for i := range testCases {
-			tokens, err := tokenize([]byte(testCases[i]))
+			tokens, err := TokenizeBytes([]byte(testCases[i]))
 			log.Printf("tokens: %v", tokens)
 
 			assert.NotNil(t, tokens)
@@ -111,50 +110,50 @@ func TestLexerTokenize(t *testing.T) {
 
 	testCases := []struct {
 		In  string
-		Out []tokenType
+		Out []TokenType
 	}{
 		{
 			`1`,
-			[]tokenType{
-				tokenInteger,
-				tokenEOF,
+			[]TokenType{
+				TokenInteger,
+				TokenEOF,
 			},
 		},
 		{
 			`+
 			1`,
-			[]tokenType{
-				tokenString,
-				tokenNewLine,
-				tokenWhitespace,
-				tokenInteger,
-				tokenEOF,
+			[]TokenType{
+				TokenString,
+				TokenNewLine,
+				TokenWhitespace,
+				TokenInteger,
+				TokenEOF,
 			},
 		},
 		{
 			`(+
 			[1
 			{}])`,
-			[]tokenType{
-				tokenOpenExpression,
-				tokenString,
-				tokenNewLine,
-				tokenWhitespace,
-				tokenOpenList,
-				tokenInteger,
-				tokenNewLine,
-				tokenWhitespace,
-				tokenOpenMap,
-				tokenCloseMap,
-				tokenCloseList,
-				tokenCloseExpression,
-				tokenEOF,
+			[]TokenType{
+				TokenOpenExpression,
+				TokenString,
+				TokenNewLine,
+				TokenWhitespace,
+				TokenOpenList,
+				TokenInteger,
+				TokenNewLine,
+				TokenWhitespace,
+				TokenOpenMap,
+				TokenCloseMap,
+				TokenCloseList,
+				TokenCloseExpression,
+				TokenEOF,
 			},
 		},
 	}
 
-	getTokenTypes := func(tokens []token) []tokenType {
-		tt := make([]tokenType, 0, len(tokens))
+	getTokenTypes := func(tokens []Token) []TokenType {
+		tt := make([]TokenType, 0, len(tokens))
 		for i := range tokens {
 			tt = append(tt, tokens[i].tt)
 		}
@@ -163,7 +162,7 @@ func TestLexerTokenize(t *testing.T) {
 
 	{
 		for i := range testCases {
-			tokens, err := tokenize([]byte(testCases[i].In))
+			tokens, err := TokenizeBytes([]byte(testCases[i].In))
 
 			assert.NotNil(t, tokens)
 			assert.NoError(t, err)
@@ -222,7 +221,7 @@ func TestLexerColumnAndLines(t *testing.T) {
 		},
 	}
 
-	getTokenPositions := func(tokens []token) [][2]int {
+	getTokenPositions := func(tokens []Token) [][2]int {
 		ret := make([][2]int, 0, len(tokens))
 		for i := range tokens {
 			ret = append(ret, [2]int{tokens[i].line, tokens[i].col})
@@ -232,7 +231,7 @@ func TestLexerColumnAndLines(t *testing.T) {
 
 	{
 		for i := range testCases {
-			tokens, err := tokenize([]byte(testCases[i].In))
+			tokens, err := TokenizeBytes([]byte(testCases[i].In))
 
 			assert.NotNil(t, tokens)
 			assert.NoError(t, err)

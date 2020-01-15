@@ -8,6 +8,8 @@ import (
 	"log"
 	"strconv"
 	"strings"
+
+	"github.com/xiam/sexpr/lexer"
 )
 
 var (
@@ -15,7 +17,7 @@ var (
 	errUnexpectedToken = errors.New("unexpected token")
 )
 
-var TokenEOF = token{tt: tokenEOF}
+var TokenEOF = lexer.NewToken(lexer.TokenEOF, "", 0, 0)
 
 type parserState func(p *parser) parserState
 
@@ -40,10 +42,10 @@ type Node struct {
 	Value    Value
 	Children []*Node
 
-	token *token
+	token *lexer.Token
 }
 
-func NewNode(tok *token, value interface{}) (*Node, error) {
+func NewNode(tok *lexer.Token, value interface{}) (*Node, error) {
 	v, err := NewValue(value)
 	if err != nil {
 		return nil, err
@@ -56,7 +58,7 @@ func NewNode(tok *token, value interface{}) (*Node, error) {
 	}, nil
 }
 
-func NewExpressionNode(tok *token) *Node {
+func NewExpressionNode(tok *lexer.Token) *Node {
 	return &Node{
 		Type:     NodeTypeExpression,
 		Children: []*Node{},
@@ -65,7 +67,7 @@ func NewExpressionNode(tok *token) *Node {
 	}
 }
 
-func NewMapNode(tok *token) *Node {
+func NewMapNode(tok *lexer.Token) *Node {
 	return &Node{
 		Type:     NodeTypeMap,
 		Children: []*Node{},
@@ -74,7 +76,7 @@ func NewMapNode(tok *token) *Node {
 	}
 }
 
-func NewListNode(tok *token) *Node {
+func NewListNode(tok *lexer.Token) *Node {
 	return &Node{
 		Type:     NodeTypeList,
 		Children: []*Node{},
@@ -87,19 +89,19 @@ func (n *Node) push(node *Node) {
 	n.Children = append(n.Children, node)
 }
 
-func (n *Node) NewExpression(tok *token) *Node {
+func (n *Node) NewExpression(tok *lexer.Token) *Node {
 	node := NewExpressionNode(tok)
 	n.Children = append(n.Children, node)
 	return node
 }
 
-func (n *Node) NewList(tok *token) *Node {
+func (n *Node) NewList(tok *lexer.Token) *Node {
 	node := NewListNode(tok)
 	n.Children = append(n.Children, node)
 	return node
 }
 
-func (n *Node) NewMap(tok *token) *Node {
+func (n *Node) NewMap(tok *lexer.Token) *Node {
 	node := NewMapNode(tok)
 	n.Children = append(n.Children, node)
 	return node
@@ -114,11 +116,11 @@ func (n Node) String() string {
 }
 
 type parser struct {
-	lx   *lexer
+	lx   *lexer.Lexer
 	root *Node
 
-	lastTok *token
-	nextTok *token
+	lastTok *lexer.Token
+	nextTok *lexer.Token
 
 	lastErr error
 }
@@ -129,7 +131,7 @@ func newParser(r io.Reader) *parser {
 		Type:     NodeTypeList,
 		Children: []*Node{},
 	}
-	p.lx = newLexer(r)
+	p.lx = lexer.New(r)
 	return p
 }
 
@@ -137,7 +139,7 @@ func (p *parser) run() error {
 	//errCh := make(chan error)
 
 	go func() {
-		err := p.lx.run()
+		err := p.lx.Scan()
 		_ = err
 		//errCh <- err
 	}()
@@ -157,19 +159,19 @@ func (p *parser) run() error {
 	return p.lastErr
 }
 
-func (p *parser) curr() *token {
+func (p *parser) curr() *lexer.Token {
 	return p.lastTok
 }
 
-func (p *parser) read() *token {
-	tok, ok := <-p.lx.tokens
+func (p *parser) read() *lexer.Token {
+	tok, ok := <-p.lx.Tokens()
 	if ok {
 		return &tok
 	}
-	return &TokenEOF
+	return TokenEOF
 }
 
-func (p *parser) peek() *token {
+func (p *parser) peek() *lexer.Token {
 	if p.nextTok != nil {
 		return p.nextTok
 	}
@@ -178,7 +180,7 @@ func (p *parser) peek() *token {
 	return p.nextTok
 }
 
-func (p *parser) next() *token {
+func (p *parser) next() *lexer.Token {
 	if p.nextTok != nil {
 		tok := p.nextTok
 		p.lastTok, p.nextTok = tok, nil
@@ -194,8 +196,8 @@ func parserDefaultState(p *parser) parserState {
 	root := p.root
 	tok := p.next()
 
-	switch tok.tt {
-	case tokenEOF:
+	switch tok.Type() {
+	case lexer.TokenEOF:
 		return nil
 
 	default:
@@ -216,39 +218,29 @@ func parserErrorState(err error) parserState {
 	}
 }
 
-func mergeTokens(tokens []*token) *token {
-	var firstTok *token
+func mergeTokens(tt lexer.TokenType, tokens []*lexer.Token) *lexer.Token {
 	var text string
 
-	tt := tokenInvalid
+	var firstTok *lexer.Token
 	for _, tok := range tokens {
 		if firstTok == nil {
 			firstTok = tok
-			tt = tok.tt
 		}
-		if tt != tok.tt {
-			tt = tokenLiteral
-		}
-		text = text + tok.text
+		text = text + tok.Text()
 	}
 
-	return &token{
-		tt:   tt,
-		text: text,
-
-		col:  firstTok.col,
-		line: firstTok.line,
-	}
+	line, col := firstTok.Pos()
+	return lexer.NewToken(tt, text, line, col)
 }
 
-func expectTokens(p *parser, tt ...tokenType) ([]*token, error) {
-	tokens := []*token{}
+func expectTokens(p *parser, tt ...lexer.TokenType) ([]*lexer.Token, error) {
+	tokens := []*lexer.Token{}
 	for i := range tt {
 		tok := p.next()
-		if tok.tt == tokenEOF {
+		if tok.Type() == lexer.TokenEOF {
 			return nil, errUnexpectedEOF
 		}
-		if tok.tt != tt[i] {
+		if tok.Type() != tt[i] {
 			return nil, errUnexpectedToken
 		}
 		tokens = append(tokens, tok)
@@ -260,56 +252,56 @@ func parserStateData(root *Node) parserState {
 	return func(p *parser) parserState {
 		tok := p.curr()
 
-		switch tok.tt {
-		case tokenWhitespace, tokenNewLine:
+		switch tok.Type() {
+		case lexer.TokenWhitespace, lexer.TokenNewLine:
 			// continue
 
-		case tokenQuote:
+		case lexer.TokenQuote:
 			if state := parserStateString(root)(p); state != nil {
 				return state
 			}
 
-		case tokenInteger:
+		case lexer.TokenInteger:
 			if state := parserStateNumeric(root)(p); state != nil {
 				return state
 			}
 
-		case tokenPercent:
+		case lexer.TokenPercent:
 			if state := parserStateArgument(root)(p); state != nil {
 				return state
 			}
 
-		case tokenColon:
+		case lexer.TokenColon:
 			if state := parserStateAtom(root)(p); state != nil {
 				return state
 			}
 
-		case tokenWord:
+		case lexer.TokenWord:
 			if state := parserStateWord(root)(p); state != nil {
 				return state
 			}
 
-		case tokenString:
+		case lexer.TokenString:
 			if state := parserStateWord(root)(p); state != nil {
 				return state
 			}
 
-		case tokenHash:
+		case lexer.TokenHash:
 			if state := parserStateComment(root)(p); state != nil {
 				return state
 			}
 
-		case tokenOpenMap:
+		case lexer.TokenOpenMap:
 			if state := parserStateOpenMap(root.NewMap(tok))(p); state != nil {
 				return state
 			}
 
-		case tokenOpenList:
+		case lexer.TokenOpenList:
 			if state := parserStateOpenList(root.NewList(tok))(p); state != nil {
 				return state
 			}
 
-		case tokenOpenExpression:
+		case lexer.TokenOpenExpression:
 			if state := parserStateOpenExpression(root.NewExpression(tok))(p); state != nil {
 				return state
 			}
@@ -327,18 +319,18 @@ func expectIntegerNode(p *parser) (*Node, error) {
 	curr := p.curr()
 
 	next := p.peek()
-	switch next.tt {
-	case tokenDot:
+	switch next.Type() {
+	case lexer.TokenDot:
 		// got a point, this means this is a floating point number
 
-		mantissa, err := expectTokens(p, tokenDot, tokenInteger)
+		mantissa, err := expectTokens(p, lexer.TokenDot, lexer.TokenInteger)
 		if err != nil {
 			return nil, err
 		}
 
-		tok := mergeTokens(append([]*token{curr}, mantissa...))
+		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, mantissa...))
 
-		f64, err := strconv.ParseFloat(tok.text, 64)
+		f64, err := strconv.ParseFloat(tok.Text(), 64)
 		if err != nil {
 			return nil, err
 		}
@@ -347,7 +339,7 @@ func expectIntegerNode(p *parser) (*Node, error) {
 
 	default:
 		// natural end for an integer
-		i64, err := strconv.ParseInt(curr.text, 10, 64)
+		i64, err := strconv.ParseInt(curr.Text(), 10, 64)
 		if err != nil {
 			return nil, err
 		}
@@ -358,31 +350,31 @@ func expectIntegerNode(p *parser) (*Node, error) {
 	panic("unreachable")
 }
 
-func expectString(p *parser) (*token, error) {
-	tokens := []*token{}
+func expectString(p *parser) (*lexer.Token, error) {
+	tokens := []*lexer.Token{}
 
 loop:
 	for {
 		tok := p.next()
 
-		switch tok.tt {
-		case tokenQuote:
+		switch tok.Type() {
+		case lexer.TokenQuote:
 			break loop
-		case tokenEOF:
+		case lexer.TokenEOF:
 			return nil, errUnexpectedEOF
 		default:
 			tokens = append(tokens, tok)
 		}
 	}
 
-	return mergeTokens(tokens), nil
+	return mergeTokens(lexer.TokenLiteral, tokens), nil
 }
 
 func expectComment(p *parser) (string, error) {
 	for {
 		tok := p.next()
-		switch tok.tt {
-		case tokenNewLine, tokenEOF:
+		switch tok.Type() {
+		case lexer.TokenNewLine, lexer.TokenEOF:
 			return "", nil
 		}
 	}
@@ -393,8 +385,8 @@ func parserStateComment(root *Node) parserState {
 	loop:
 		for {
 			tok := p.next()
-			switch tok.tt {
-			case tokenEOF, tokenNewLine:
+			switch tok.Type() {
+			case lexer.TokenEOF, lexer.TokenNewLine:
 				break loop
 			}
 		}
@@ -404,17 +396,17 @@ func parserStateComment(root *Node) parserState {
 
 func parserStateString(root *Node) parserState {
 	return func(p *parser) parserState {
-		tokens := []*token{}
+		tokens := []*lexer.Token{}
 
 	loop:
 		for {
 			tok := p.next()
 
-			switch tok.tt {
-			case tokenQuote:
+			switch tok.Type() {
+			case lexer.TokenQuote:
 				break loop
 
-			case tokenEOF:
+			case lexer.TokenEOF:
 				return parserErrorState(errUnexpectedEOF)
 
 			default:
@@ -422,10 +414,9 @@ func parserStateString(root *Node) parserState {
 			}
 		}
 
-		tok := mergeTokens(tokens)
-		tok.tt = tokenString
+		tok := mergeTokens(lexer.TokenString, tokens)
 
-		node, err := NewNode(tok, tok.text)
+		node, err := NewNode(tok, tok.Text())
 		if err != nil {
 			return parserErrorState(errUnexpectedEOF)
 		}
@@ -440,15 +431,15 @@ func parserStateArgument(root *Node) parserState {
 		curr := p.curr()
 
 		val := p.next()
-		switch val.tt {
-		case tokenInteger, tokenStar:
+		switch val.Type() {
+		case lexer.TokenInteger, lexer.TokenStar:
 			// ok
 		default:
 			return parserErrorState(errUnexpectedToken)
 		}
 
-		tok := mergeTokens(append([]*token{curr}, val))
-		node, err := NewNode(tok, tok.text)
+		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, val))
+		node, err := NewNode(tok, tok.Text())
 		if err != nil {
 			return parserErrorState(err)
 		}
@@ -472,7 +463,7 @@ func parserStateWord(root *Node) parserState {
 	return func(p *parser) parserState {
 		curr := p.curr()
 
-		node, err := NewNode(curr, curr.text)
+		node, err := NewNode(curr, curr.Text())
 		if err != nil {
 			return parserErrorState(err)
 		}
@@ -486,13 +477,13 @@ func parserStateAtom(root *Node) parserState {
 	return func(p *parser) parserState {
 		curr := p.curr()
 
-		atomName, err := expectTokens(p, tokenWord)
+		atomName, err := expectTokens(p, lexer.TokenWord)
 		if err != nil {
 			return parserErrorState(err)
 		}
 
-		tok := mergeTokens(append([]*token{curr}, atomName...))
-		node, err := NewNode(tok, tok.text)
+		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, atomName...))
+		node, err := NewNode(tok, tok.Text())
 		if err != nil {
 			return parserErrorState(err)
 		}
@@ -506,11 +497,11 @@ func parserStateOpenMap(root *Node) parserState {
 	return func(p *parser) parserState {
 		tok := p.next()
 
-		switch tok.tt {
-		case tokenEOF:
+		switch tok.Type() {
+		case lexer.TokenEOF:
 			return parserErrorState(errUnexpectedEOF)
 
-		case tokenCloseMap:
+		case lexer.TokenCloseMap:
 			return nil
 
 		default:
@@ -527,11 +518,11 @@ func parserStateOpenExpression(root *Node) parserState {
 	return func(p *parser) parserState {
 		tok := p.next()
 
-		switch tok.tt {
-		case tokenEOF:
+		switch tok.Type() {
+		case lexer.TokenEOF:
 			return parserErrorState(errUnexpectedEOF)
 
-		case tokenCloseExpression:
+		case lexer.TokenCloseExpression:
 			return nil
 
 		default:
@@ -548,11 +539,11 @@ func parserStateOpenList(root *Node) parserState {
 	return func(p *parser) parserState {
 		tok := p.next()
 
-		switch tok.tt {
-		case tokenEOF:
+		switch tok.Type() {
+		case lexer.TokenEOF:
 			return parserErrorState(errUnexpectedEOF)
 
-		case tokenCloseList:
+		case lexer.TokenCloseList:
 			return nil
 
 		default:
@@ -614,7 +605,7 @@ func compileNodeLevel(node *Node, level int) []byte {
 		return []byte(fmt.Sprintf("(%s)", strings.Join(nodes, " ")))
 
 	case NodeTypeAtom:
-		if node.token.tt == tokenString {
+		if node.token.Is(lexer.TokenString) {
 			return []byte(fmt.Sprintf("%q", node.Value))
 		}
 		return []byte(fmt.Sprintf("%v", node.Value))
@@ -647,7 +638,7 @@ func printNodeLevel(node *Node, level int) {
 	}
 }
 
-func parserError(err error, tok *token) error {
+func parserError(err error, tok *lexer.Token) error {
 	log.Fatalf("%v: %v", err.Error(), tok)
 	return err
 }

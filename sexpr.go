@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"log"
+
+	"github.com/xiam/sexpr/lexer"
 )
 
 type Reader struct {
@@ -20,12 +22,12 @@ func NewReader(r io.Reader) *Reader {
 }
 
 func (r *Reader) Parse() (*Node, error) {
-	lx := newLexer(r.r)
+	lx := lexer.New(r.r)
 	go func() {
-		for tok := range lx.tokens {
+		for tok := range lx.Tokens() {
 			log.Printf("tok: %v -- %#v", tok, tok)
 		}
 	}()
-	err := lx.run()
+	err := lx.Scan()
 	return nil, err
 }
