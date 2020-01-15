@@ -107,7 +107,6 @@ func TestLexerScanner(t *testing.T) {
 }
 
 func TestLexerTokenize(t *testing.T) {
-
 	testCases := []struct {
 		In  string
 		Out []TokenType
@@ -170,11 +169,9 @@ func TestLexerTokenize(t *testing.T) {
 			assert.Equal(t, testCases[i].Out, getTokenTypes(tokens))
 		}
 	}
-
 }
 
 func TestLexerColumnAndLines(t *testing.T) {
-
 	testCases := []struct {
 		In  string
 		Pos [][2]int
@@ -239,5 +236,4 @@ func TestLexerColumnAndLines(t *testing.T) {
 			assert.Equal(t, testCases[i].Pos, getTokenPositions(tokens))
 		}
 	}
-
 }

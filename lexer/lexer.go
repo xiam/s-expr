@@ -86,7 +86,6 @@ func (lx *Lexer) stop() {
 
 // Scan starts scanning the reader for tokens.
 func (lx *Lexer) Scan() error {
-
 	for state := lexDefaultState; state != nil; {
 		select {
 		case <-lx.done:
