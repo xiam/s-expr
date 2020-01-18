@@ -4,9 +4,6 @@ import (
 	"fmt"
 )
 
-// EOF represents the end of a file
-var EOF = NewToken(TokenEOF, "", -1, -1)
-
 // Token represents a known sequence of characters (lexical unit)
 type Token struct {
 	tt     TokenType
