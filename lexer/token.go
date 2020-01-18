@@ -38,11 +38,6 @@ func (t Token) Text() string {
 	return t.lexeme
 }
 
-// Is returns true if the token matches the given type
-func (t Token) Is(tt TokenType) bool {
-	return t.tt == tt
-}
-
 func (t Token) String() string {
 	return fmt.Sprintf("(:%v %q [%d %d])", tokenName(t.tt), t.lexeme, t.line, t.col)
 }
