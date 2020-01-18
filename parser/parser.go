@@ -11,6 +11,8 @@ import (
 	"github.com/xiam/sexpr/lexer"
 )
 
+var EOF = lexer.NewToken(lexer.TokenEOF, "", -1, -1)
+
 var (
 	errUnexpectedEOF   = errors.New("unexpected EOF")
 	errUnexpectedToken = errors.New("unexpected token")
@@ -66,7 +68,7 @@ func (p *Parser) read() *lexer.Token {
 	if ok {
 		return &tok
 	}
-	return lexer.EOF
+	return EOF
 }
 
 func (p *Parser) peek() *lexer.Token {
@@ -153,18 +155,13 @@ func parserStateData(root *ast.Node) parserState {
 		case lexer.TokenWhitespace, lexer.TokenNewLine:
 			// continue
 
-		case lexer.TokenQuote:
+		case lexer.TokenDoubleQuote:
 			if state := parserStateString(root)(p); state != nil {
 				return state
 			}
 
 		case lexer.TokenInteger:
 			if state := parserStateNumeric(root)(p); state != nil {
-				return state
-			}
-
-		case lexer.TokenPercent:
-			if state := parserStateArgument(root)(p); state != nil {
 				return state
 			}
 
@@ -178,7 +175,7 @@ func parserStateData(root *ast.Node) parserState {
 				return state
 			}
 
-		case lexer.TokenString:
+		case lexer.TokenBinary:
 			if state := parserStateWord(root)(p); state != nil {
 				return state
 			}

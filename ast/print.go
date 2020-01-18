@@ -14,7 +14,7 @@ func Print(n *Node) {
 
 func printLevel(n *Node, level int) {
 	if n == nil {
-		fmt.Printf(":nil\n")
+		fmt.Printf("()\n")
 		return
 	}
 	indent := strings.Repeat("    ", level)
@@ -28,11 +28,8 @@ func printLevel(n *Node, level int) {
 			printLevel(list[i], level+1)
 		}
 
-	case NodeTypeValue:
-		fmt.Printf("%#v (%v)\n", n.Value(), n.Token())
-
 	default:
-		panic("unknown node type")
+		fmt.Printf("%#v (%v)\n", n.Value(), n.Token())
 	}
 }
 
@@ -43,7 +40,7 @@ func Encode(n *Node) []byte {
 
 func encodeNodeLevel(n *Node, level int) []byte {
 	if n == nil {
-		return []byte(":nil")
+		return []byte("()")
 	}
 	switch n.Type() {
 	case NodeTypeMap:
@@ -70,13 +67,10 @@ func encodeNodeLevel(n *Node, level int) []byte {
 		}
 		return []byte(fmt.Sprintf("(%s)", strings.Join(nodes, " ")))
 
-	case NodeTypeValue:
-		if n.Token().Is(lexer.TokenString) {
+	default:
+		if n.Token().Type() == lexer.TokenBinary {
 			return []byte(fmt.Sprintf("%q", n.Value()))
 		}
 		return []byte(fmt.Sprintf("%v", n.Value()))
-
-	default:
-		panic("unknown node type")
 	}
 }

@@ -7,32 +7,6 @@ import (
 	"github.com/xiam/sexpr/lexer"
 )
 
-// NodeType represents the type of the AST node
-type NodeType uint8
-
-// Node types
-const (
-	NodeTypeValue = iota
-	NodeTypeList
-	NodeTypeMap
-	NodeTypeExpression
-)
-
-func (nt NodeType) String() string {
-	s, ok := nodeTypeName[nt]
-	if ok {
-		return s
-	}
-	return ""
-}
-
-var nodeTypeName = map[NodeType]string{
-	NodeTypeExpression: "expression",
-	NodeTypeList:       "list",
-	NodeTypeMap:        "map",
-	NodeTypeValue:      "value",
-}
-
 // Node represents leaf of the AST
 type Node struct {
 	p *Node
@@ -51,8 +25,8 @@ func newNode(nt NodeType, tok *lexer.Token, v interface{}) *Node {
 }
 
 // New creates and returns an orphaned node based on the given token
-func New(tok *lexer.Token, v interface{}) *Node {
-	return newNode(NodeTypeValue, tok, v)
+func New(tok *lexer.Token, v Valuer) *Node {
+	return newNode(v.Type(), tok, v)
 }
 
 // NewExpression creates and returns a node of type "expression"
@@ -71,7 +45,7 @@ func NewList(tok *lexer.Token) *Node {
 }
 
 // PushValue appends a new value to the node
-func (n *Node) PushValue(tok *lexer.Token, v interface{}) (*Node, error) {
+func (n *Node) PushValue(tok *lexer.Token, v Valuer) (*Node, error) {
 	node := New(tok, v)
 	if err := n.Push(node); err != nil {
 		return nil, err
@@ -118,7 +92,24 @@ func (n Node) Type() NodeType {
 
 // Value returns the value of the node
 func (n Node) Value() interface{} {
+	if n.v == nil {
+		return nil
+	}
+	if _, ok := n.v.(Valuer); ok {
+		return n.v.(Valuer).Value()
+	}
 	return n.v
+}
+
+// Encode returns the encoded value of the node
+func (n Node) Encode() string {
+	if n.v == nil {
+		return ""
+	}
+	if _, ok := n.v.(Valuer); ok {
+		return n.v.(Valuer).Encode()
+	}
+	return ""
 }
 
 // List returns all the children elements of the node
@@ -136,10 +127,26 @@ func (n Node) String() string {
 
 // Push appends a child node to a parent node of type "expression", "map" or "list".
 func (n *Node) Push(node *Node) error {
-	if _, ok := n.v.([]*Node); ok {
+	if n.IsVector() {
 		n.v = append(n.v.([]*Node), node)
 		node.p = n
 		return nil
 	}
-	return errors.New("node can't accept children")
+	return errors.New("nodes of type value can't accept children")
+}
+
+// IsValue returns true if the node is of type value
+func (n *Node) IsValue() bool {
+	if n.nt&nodeTypeValue > 0 {
+		return true
+	}
+	return false
+}
+
+// IsVector returns true if the node is of type vector
+func (n *Node) IsVector() bool {
+	if n.nt&nodeTypeVector > 0 {
+		return true
+	}
+	return false
 }
