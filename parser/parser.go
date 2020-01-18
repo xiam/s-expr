@@ -3,14 +3,12 @@ package parser
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"strconv"
-	"strings"
 
+	"github.com/xiam/sexpr/ast"
 	"github.com/xiam/sexpr/lexer"
-	"github.com/xiam/sexpr/node"
 )
 
 var (
@@ -24,7 +22,7 @@ type parserState func(p *Parser) parserState
 
 type Parser struct {
 	lx   *lexer.Lexer
-	root *node.Node
+	root *ast.Node
 
 	lastTok *lexer.Token
 	nextTok *lexer.Token
@@ -34,7 +32,7 @@ type Parser struct {
 
 func New(r io.Reader) *Parser {
 	p := &Parser{}
-	p.root = node.NewList(nil)
+	p.root = ast.NewList(nil)
 	p.lx = lexer.New(r)
 	return p
 }
@@ -146,7 +144,7 @@ func expectTokens(p *Parser, tt ...lexer.TokenType) ([]*lexer.Token, error) {
 	return tokens, nil
 }
 
-func parserStateData(root *node.Node) parserState {
+func parserStateData(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		tok := p.curr()
 
@@ -212,7 +210,7 @@ func parserStateData(root *node.Node) parserState {
 	}
 }
 
-func expectIntegerNode(p *Parser) (*node.Node, error) {
+func expectIntegerNode(p *Parser) (*ast.Node, error) {
 	curr := p.curr()
 
 	next := p.peek()
@@ -232,7 +230,7 @@ func expectIntegerNode(p *Parser) (*node.Node, error) {
 			return nil, err
 		}
 
-		return node.New(tok, f64), nil
+		return ast.New(tok, f64), nil
 
 	default:
 		// natural end for an integer
@@ -241,7 +239,7 @@ func expectIntegerNode(p *Parser) (*node.Node, error) {
 			return nil, err
 		}
 
-		return node.New(curr, i64), nil
+		return ast.New(curr, i64), nil
 	}
 
 	panic("unreachable")
@@ -277,7 +275,7 @@ func expectComment(p *Parser) (string, error) {
 	}
 }
 
-func parserStateComment(root *node.Node) parserState {
+func parserStateComment(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 	loop:
 		for {
@@ -291,7 +289,7 @@ func parserStateComment(root *node.Node) parserState {
 	}
 }
 
-func parserStateString(root *node.Node) parserState {
+func parserStateString(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		tokens := []*lexer.Token{}
 
@@ -312,12 +310,12 @@ func parserStateString(root *node.Node) parserState {
 		}
 
 		tok := mergeTokens(lexer.TokenString, tokens)
-		_ = node.New(tok, tok.Text())
+		_ = ast.New(tok, tok.Text())
 		return nil
 	}
 }
 
-func parserStateArgument(root *node.Node) parserState {
+func parserStateArgument(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		curr := p.curr()
 
@@ -330,12 +328,12 @@ func parserStateArgument(root *node.Node) parserState {
 		}
 
 		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, val))
-		_ = node.New(tok, tok.Text())
+		_ = ast.New(tok, tok.Text())
 		return nil
 	}
 }
 
-func parserStateNumeric(root *node.Node) parserState {
+func parserStateNumeric(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		node, err := expectIntegerNode(p)
 		if err != nil {
@@ -346,7 +344,7 @@ func parserStateNumeric(root *node.Node) parserState {
 	}
 }
 
-func parserStateWord(root *node.Node) parserState {
+func parserStateWord(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		curr := p.curr()
 		root.Push(curr, curr.Text())
@@ -354,7 +352,7 @@ func parserStateWord(root *node.Node) parserState {
 	}
 }
 
-func parserStateValue(root *node.Node) parserState {
+func parserStateValue(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		curr := p.curr()
 
@@ -364,14 +362,14 @@ func parserStateValue(root *node.Node) parserState {
 		}
 
 		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, atomName...))
-		node := node.New(tok, tok.Text())
-		//node.Value.Type = ValueTypeValue
+		node := ast.New(tok, tok.Text())
+		//ast.Value.Type = ValueTypeValue
 		root.AppendChild(node)
 		return nil
 	}
 }
 
-func parserStateOpenMap(root *node.Node) parserState {
+func parserStateOpenMap(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		tok := p.next()
 
@@ -392,7 +390,7 @@ func parserStateOpenMap(root *node.Node) parserState {
 	}
 }
 
-func parserStateOpenExpression(root *node.Node) parserState {
+func parserStateOpenExpression(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		tok := p.next()
 
@@ -413,7 +411,7 @@ func parserStateOpenExpression(root *node.Node) parserState {
 	}
 }
 
-func parserStateOpenList(root *node.Node) parserState {
+func parserStateOpenList(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		tok := p.next()
 
@@ -434,7 +432,7 @@ func parserStateOpenList(root *node.Node) parserState {
 	}
 }
 
-func Parse(in []byte) (*node.Node, error) {
+func Parse(in []byte) (*ast.Node, error) {
 	p := New(bytes.NewReader(in))
 
 	err := p.Parse()

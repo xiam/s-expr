@@ -5,14 +5,13 @@ import (
 	"strings"
 
 	"github.com/xiam/sexpr/lexer"
-	"github.com/xiam/sexpr/node"
 )
 
-func Print(n *node.Node) {
+func Print(n *Node) {
 	printLevel(n, 0)
 }
 
-func printLevel(n *node.Node, level int) {
+func printLevel(n *Node, level int) {
 	if n == nil {
 		fmt.Printf(":nil\n")
 		return
@@ -21,14 +20,14 @@ func printLevel(n *node.Node, level int) {
 	fmt.Printf("%s(%s): ", indent, n.Type())
 	switch n.Type() {
 
-	case node.NodeTypeExpression, node.NodeTypeList, node.NodeTypeMap:
+	case NodeTypeExpression, NodeTypeList, NodeTypeMap:
 		fmt.Printf("(%v)\n", n.Token())
 		list := n.List()
 		for i := range list {
 			printLevel(list[i], level+1)
 		}
 
-	case node.NodeTypeValue:
+	case NodeTypeValue:
 		fmt.Printf("%#v (%v)\n", n.Value(), n.Token())
 
 	default:
@@ -36,30 +35,30 @@ func printLevel(n *node.Node, level int) {
 	}
 }
 
-func Compile(n *node.Node) []byte {
+func Compile(n *Node) []byte {
 	return compileNodeLevel(n, 0)
 }
 
-func compileNodeLevel(n *node.Node, level int) []byte {
+func compileNodeLevel(n *Node, level int) []byte {
 	if n == nil {
 		return []byte(":nil")
 	}
 	switch n.Type() {
-	case node.NodeTypeMap:
+	case NodeTypeMap:
 		nodes := []string{}
 		for i := range n.List() {
 			nodes = append(nodes, string(compileNodeLevel(n.List()[i], level+1)))
 		}
 		return []byte(fmt.Sprintf("{%s}", strings.Join(nodes, " ")))
 
-	case node.NodeTypeList:
+	case NodeTypeList:
 		nodes := []string{}
 		for i := range n.List() {
 			nodes = append(nodes, string(compileNodeLevel(n.List()[i], level+1)))
 		}
 		return []byte(fmt.Sprintf("[%s]", strings.Join(nodes, " ")))
 
-	case node.NodeTypeExpression:
+	case NodeTypeExpression:
 		nodes := []string{}
 		for i := range n.List() {
 			nodes = append(nodes, string(compileNodeLevel(n.List()[i], level+1)))
@@ -69,7 +68,7 @@ func compileNodeLevel(n *node.Node, level int) []byte {
 		}
 		return []byte(fmt.Sprintf("(%s)", strings.Join(nodes, " ")))
 
-	case node.NodeTypeValue:
+	case NodeTypeValue:
 		if n.Token().Is(lexer.TokenString) {
 			return []byte(fmt.Sprintf("%q", n.Value()))
 		}

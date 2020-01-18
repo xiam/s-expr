@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/xiam/sexpr/node"
+	"github.com/xiam/sexpr/ast"
 )
 
 func TestParserBuildTree(t *testing.T) {
@@ -115,8 +115,8 @@ func TestParserBuildTree(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, root)
 
-		node.Print(root)
-		s := compileNode(root)
+		ast.Print(root)
+		s := ast.Compile(root)
 		log.Printf("compiled: %v", string(s))
 		log.Printf("tree: %#v", root)
 	}
