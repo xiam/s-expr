@@ -36,7 +36,7 @@ func (n *nodeValue) Encode() string {
 	case NodeTypeInt:
 		return fmt.Sprintf("%d", n.v)
 	case NodeTypeFloat:
-		return fmt.Sprintf("%f", n.v)
+		return fmt.Sprintf("%v", n.v)
 	case NodeTypeSymbol:
 		return fmt.Sprintf("%s", n.v)
 	case NodeTypeAtom:

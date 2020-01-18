@@ -166,7 +166,7 @@ func parserStateData(root *ast.Node) parserState {
 			}
 
 		case lexer.TokenColon:
-			if state := parserStateValue(root)(p); state != nil {
+			if state := parserStateAtom(root)(p); state != nil {
 				return state
 			}
 
@@ -233,14 +233,14 @@ func expectIntegerNode(p *Parser) (*ast.Node, error) {
 			return nil, err
 		}
 
-		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, mantissa...))
+		tok := mergeTokens(lexer.TokenBinary, append([]*lexer.Token{curr}, mantissa...))
 
 		f64, err := strconv.ParseFloat(tok.Text(), 64)
 		if err != nil {
 			return nil, err
 		}
 
-		return ast.New(tok, f64), nil
+		return ast.New(tok, ast.NewFloatNode(f64)), nil
 
 	default:
 		// natural end for an integer
@@ -249,7 +249,7 @@ func expectIntegerNode(p *Parser) (*ast.Node, error) {
 			return nil, err
 		}
 
-		return ast.New(curr, i64), nil
+		return ast.New(curr, ast.NewIntNode(i64)), nil
 	}
 
 	panic("unreachable")
@@ -263,7 +263,7 @@ loop:
 		tok := p.next()
 
 		switch tok.Type() {
-		case lexer.TokenQuote:
+		case lexer.TokenDoubleQuote:
 			break loop
 		case lexer.TokenEOF:
 			return nil, errUnexpectedEOF
@@ -272,7 +272,7 @@ loop:
 		}
 	}
 
-	return mergeTokens(lexer.TokenLiteral, tokens), nil
+	return mergeTokens(lexer.TokenBinary, tokens), nil
 }
 
 func expectComment(p *Parser) (string, error) {
@@ -308,7 +308,7 @@ func parserStateString(root *ast.Node) parserState {
 			tok := p.next()
 
 			switch tok.Type() {
-			case lexer.TokenQuote:
+			case lexer.TokenDoubleQuote:
 				break loop
 
 			case lexer.TokenEOF:
@@ -319,8 +319,10 @@ func parserStateString(root *ast.Node) parserState {
 			}
 		}
 
-		tok := mergeTokens(lexer.TokenString, tokens)
-		_ = ast.New(tok, tok.Text())
+		tok := mergeTokens(lexer.TokenBinary, tokens)
+		if err := root.Push(ast.New(tok, ast.NewStringNode(tok.Text()))); err != nil {
+			return parserErrorState(err)
+		}
 		return nil
 	}
 }
@@ -331,14 +333,14 @@ func parserStateArgument(root *ast.Node) parserState {
 
 		val := p.next()
 		switch val.Type() {
-		case lexer.TokenInteger, lexer.TokenStar:
+		case lexer.TokenInteger:
 			// ok
 		default:
 			return parserErrorState(errUnexpectedToken)
 		}
 
-		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, val))
-		_ = ast.New(tok, tok.Text())
+		tok := mergeTokens(lexer.TokenBinary, append([]*lexer.Token{curr}, val))
+		_ = ast.New(tok, ast.NewStringNode(tok.Text()))
 		return nil
 	}
 }
@@ -359,14 +361,14 @@ func parserStateNumeric(root *ast.Node) parserState {
 func parserStateWord(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		curr := p.curr()
-		if _, err := root.PushValue(curr, curr.Text()); err != nil {
+		if _, err := root.PushValue(curr, ast.NewSymbolNode(curr.Text())); err != nil {
 			return parserErrorState(err)
 		}
 		return nil
 	}
 }
 
-func parserStateValue(root *ast.Node) parserState {
+func parserStateAtom(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		curr := p.curr()
 
@@ -375,8 +377,8 @@ func parserStateValue(root *ast.Node) parserState {
 			return parserErrorState(err)
 		}
 
-		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, atomName...))
-		node := ast.New(tok, tok.Text())
+		tok := mergeTokens(lexer.TokenBinary, append([]*lexer.Token{curr}, atomName...))
+		node := ast.New(tok, ast.NewAtomNode(tok.Text()))
 		if err := root.Push(node); err != nil {
 			return parserErrorState(err)
 		}

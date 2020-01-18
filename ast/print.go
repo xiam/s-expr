@@ -3,8 +3,6 @@ package ast
 import (
 	"fmt"
 	"strings"
-
-	"github.com/xiam/sexpr/lexer"
 )
 
 // Print displays a human-readable representation of a node
@@ -22,7 +20,7 @@ func printLevel(n *Node, level int) {
 	switch n.Type() {
 
 	case NodeTypeExpression, NodeTypeList, NodeTypeMap:
-		fmt.Printf("(%v)\n", n.Token())
+		fmt.Printf("%v\n", n.Token())
 		list := n.List()
 		for i := range list {
 			printLevel(list[i], level+1)
@@ -55,6 +53,9 @@ func encodeNodeLevel(n *Node, level int) []byte {
 		for i := range n.List() {
 			nodes = append(nodes, string(encodeNodeLevel(n.List()[i], level+1)))
 		}
+		if level == 0 {
+			return []byte(strings.Join(nodes, " "))
+		}
 		return []byte(fmt.Sprintf("[%s]", strings.Join(nodes, " ")))
 
 	case NodeTypeExpression:
@@ -68,9 +69,6 @@ func encodeNodeLevel(n *Node, level int) []byte {
 		return []byte(fmt.Sprintf("(%s)", strings.Join(nodes, " ")))
 
 	default:
-		if n.Token().Type() == lexer.TokenBinary {
-			return []byte(fmt.Sprintf("%q", n.Value()))
-		}
-		return []byte(fmt.Sprintf("%v", n.Value()))
+		return []byte(n.Encode())
 	}
 }
