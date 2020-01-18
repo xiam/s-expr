@@ -19,19 +19,16 @@ var (
 	isOpenExpression  = isTokenType(TokenOpenExpression)
 	isCloseExpression = isTokenType(TokenCloseExpression)
 
-	isNewLine    = isTokenType(TokenNewLine)
-	isQuote      = isTokenType(TokenQuote)
-	isHash       = isTokenType(TokenHash)
-	isWhitespace = isTokenType(TokenWhitespace)
+	isNewLine     = isTokenType(TokenNewLine)
+	isDoubleQuote = isTokenType(TokenDoubleQuote)
+	isHash        = isTokenType(TokenHash)
+	isWhitespace  = isTokenType(TokenWhitespace)
 
 	isWord    = isTokenType(TokenWord)
 	isInteger = isTokenType(TokenInteger)
 
-	isColon   = isTokenType(TokenColon)
-	isStar    = isTokenType(TokenStar)
-	isPercent = isTokenType(TokenPercent)
-	isDot     = isTokenType(TokenDot)
-
+	isColon     = isTokenType(TokenColon)
+	isDot       = isTokenType(TokenDot)
 	isBackslash = isTokenType(TokenBackslash)
 )
 
@@ -106,8 +103,8 @@ func (lx *Lexer) Scan() error {
 
 func (lx *Lexer) emit(tt TokenType) {
 	lx.tokens <- Token{
-		tt:   tt,
-		text: string(lx.buf),
+		tt:     tt,
+		lexeme: string(lx.buf),
 
 		col:  lx.start + 1,
 		line: lx.lines + 1,
@@ -142,11 +139,13 @@ func (lx *Lexer) next() (rune, error) {
 func lexDefaultState(lx *Lexer) lexState {
 	r, err := lx.next()
 	if err != nil {
+		if err == io.EOF {
+			return nil
+		}
 		return lexStateError(err)
 	}
 
 	switch {
-
 	case isOpenList(r):
 		return lexEmit(TokenOpenList)
 	case isCloseList(r):
@@ -162,8 +161,8 @@ func lexDefaultState(lx *Lexer) lexState {
 	case isCloseExpression(r):
 		return lexEmit(TokenCloseExpression)
 
-	case isQuote(r):
-		return lexEmit(TokenQuote)
+	case isDoubleQuote(r):
+		return lexEmit(TokenDoubleQuote)
 	case isHash(r):
 		return lexEmit(TokenHash)
 	case isNewLine(r):
@@ -178,34 +177,32 @@ func lexDefaultState(lx *Lexer) lexState {
 
 	case isColon(r):
 		return lexEmit(TokenColon)
-	case isStar(r):
-		return lexEmit(TokenStar)
-	case isPercent(r):
-		return lexEmit(TokenPercent)
 	case isDot(r):
 		return lexEmit(TokenDot)
 	case isBackslash(r):
 		return lexEmit(TokenBackslash)
 
 	default:
-		return lexString
-
+		return lexBinary
 	}
 
 	panic("unreachable")
 }
 
-func lexString(lx *Lexer) lexState {
+func lexBinary(lx *Lexer) lexState {
 	for {
 		p := lx.peek()
-		if isWhitespace(p) || isNewLine(p) || isQuote(p) {
+		if isWhitespace(p) || isNewLine(p) || isDoubleQuote(p) {
 			break
 		}
 		if _, err := lx.next(); err != nil {
+			if err == io.EOF {
+				break
+			}
 			return lexStateError(err)
 		}
 	}
-	lx.emit(TokenString)
+	lx.emit(TokenBinary)
 	return lexDefaultState
 }
 
@@ -220,6 +217,9 @@ func lexCollectStream(tt TokenType) lexState {
 	return func(lx *Lexer) lexState {
 		for (isTokenType(tt))(lx.peek()) {
 			if _, err := lx.next(); err != nil {
+				if err == io.EOF {
+					break
+				}
 				return lexStateError(err)
 			}
 		}
@@ -228,9 +228,6 @@ func lexCollectStream(tt TokenType) lexState {
 }
 
 func lexStateError(err error) lexState {
-	if err == io.EOF {
-		return nil
-	}
 	return func(lx *Lexer) lexState {
 		log.Printf("lexer error: %v", err)
 		lx.lastErr = err
@@ -238,13 +235,9 @@ func lexStateError(err error) lexState {
 	}
 }
 
-func lexStateEOF(lx *Lexer) lexState {
-	return nil
-}
-
-// TokenizeBytes takes an array of bytes and returns all the tokens within it,
+// Tokenize takes an array of bytes and returns all the tokens within it,
 // or an error if a token can't be identified.
-func TokenizeBytes(in []byte) ([]Token, error) {
+func Tokenize(in []byte) ([]Token, error) {
 	tokens := []Token{}
 	done := make(chan struct{})
 

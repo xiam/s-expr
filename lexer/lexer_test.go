@@ -1,13 +1,12 @@
 package lexer
 
 import (
-	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLexerScanner(t *testing.T) {
+func TestScanner(t *testing.T) {
 	testCases := []string{
 		`1`,
 
@@ -39,8 +38,8 @@ func TestLexerScanner(t *testing.T) {
 		`
 		(fn sum
 
-			[] [
-				(print %1 %2 %*)
+			[a b...] [
+				(print a b)
 			]
 
 			[a b c] [
@@ -97,8 +96,8 @@ func TestLexerScanner(t *testing.T) {
 
 	{
 		for i := range testCases {
-			tokens, err := TokenizeBytes([]byte(testCases[i]))
-			log.Printf("tokens: %v", tokens)
+			tokens, err := Tokenize([]byte(testCases[i]))
+			t.Logf("tokens: %v", tokens)
 
 			assert.NotNil(t, tokens)
 			assert.NoError(t, err)
@@ -106,7 +105,7 @@ func TestLexerScanner(t *testing.T) {
 	}
 }
 
-func TestLexerTokenize(t *testing.T) {
+func TestTokenize(t *testing.T) {
 	testCases := []struct {
 		In  string
 		Out []TokenType
@@ -122,7 +121,7 @@ func TestLexerTokenize(t *testing.T) {
 			`+
 			1`,
 			[]TokenType{
-				TokenString,
+				TokenBinary,
 				TokenNewLine,
 				TokenWhitespace,
 				TokenInteger,
@@ -135,7 +134,7 @@ func TestLexerTokenize(t *testing.T) {
 			{}])`,
 			[]TokenType{
 				TokenOpenExpression,
-				TokenString,
+				TokenBinary,
 				TokenNewLine,
 				TokenWhitespace,
 				TokenOpenList,
@@ -161,7 +160,7 @@ func TestLexerTokenize(t *testing.T) {
 
 	{
 		for i := range testCases {
-			tokens, err := TokenizeBytes([]byte(testCases[i].In))
+			tokens, err := Tokenize([]byte(testCases[i].In))
 
 			assert.NotNil(t, tokens)
 			assert.NoError(t, err)
@@ -171,7 +170,7 @@ func TestLexerTokenize(t *testing.T) {
 	}
 }
 
-func TestLexerColumnAndLines(t *testing.T) {
+func TestColumnAndLines(t *testing.T) {
 	testCases := []struct {
 		In  string
 		Pos [][2]int
@@ -228,7 +227,7 @@ func TestLexerColumnAndLines(t *testing.T) {
 
 	{
 		for i := range testCases {
-			tokens, err := TokenizeBytes([]byte(testCases[i].In))
+			tokens, err := Tokenize([]byte(testCases[i].In))
 
 			assert.NotNil(t, tokens)
 			assert.NoError(t, err)

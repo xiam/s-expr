@@ -18,82 +18,57 @@ const (
 	TokenExpression
 
 	TokenNewLine
-	TokenQuote
+	TokenDoubleQuote
 	TokenHash
 	TokenWhitespace
 
 	TokenWord
 	TokenInteger
-	TokenString
-	TokenLiteral
+	TokenBinary
 
 	TokenColon
-	TokenStar
-	TokenPercent
 	TokenDot
-
 	TokenBackslash
 
 	TokenEOF
 )
 
 var tokenValues = map[TokenType][]rune{
-	TokenOpenList:  []rune{'['},
-	TokenCloseList: []rune{']'},
-
-	TokenOpenMap:  []rune{'{'},
-	TokenCloseMap: []rune{'}'},
-
+	TokenOpenList:        []rune{'['},
+	TokenCloseList:       []rune{']'},
+	TokenOpenMap:         []rune{'{'},
+	TokenCloseMap:        []rune{'}'},
 	TokenOpenExpression:  []rune{'('},
 	TokenCloseExpression: []rune{')'},
-
-	TokenNewLine:    []rune{'\n'},
-	TokenQuote:      []rune{'"'},
-	TokenHash:       []rune{'#'},
-	TokenWhitespace: []rune(" \f\t\r"),
-
-	TokenWord:    []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@_"),
-	TokenInteger: []rune("0123456789"),
-
-	TokenColon:   []rune{':'},
-	TokenStar:    []rune{'*'},
-	TokenPercent: []rune{'%'},
-	TokenDot:     []rune{'.'},
-
-	TokenBackslash: []rune{'\\'},
+	TokenNewLine:         []rune{'\n'},
+	TokenDoubleQuote:     []rune{'"'},
+	TokenHash:            []rune{'#'},
+	TokenWhitespace:      []rune(" \f\t\r"),
+	TokenWord:            []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"),
+	TokenInteger:         []rune("0123456789"),
+	TokenColon:           []rune{':'},
+	TokenDot:             []rune{'.'},
+	TokenBackslash:       []rune{'\\'},
 }
 
 var tokenNames = map[TokenType]string{
-	TokenInvalid: "[invalid]",
-
-	TokenOpenList:  "[open list]",
-	TokenCloseList: "[close list]",
-
-	TokenOpenMap:  "[open map]",
-	TokenCloseMap: "[close map]",
-
-	TokenOpenExpression:  "[open expr]",
-	TokenCloseExpression: "[close expr]",
-	TokenExpression:      "[expression]",
-
-	TokenNewLine:    "[newline]",
-	TokenQuote:      "[quote]",
-	TokenHash:       "[hash]",
-	TokenWhitespace: "[separator]",
-
-	TokenWord:    "[word]",
-	TokenInteger: "[integer]",
-
-	TokenColon:   "[colon]",
-	TokenStar:    "[star]",
-	TokenPercent: "[percent]",
-	TokenDot:     "[dot]",
-	TokenString:  "[string]",
-	TokenLiteral: "[literal]",
-
-	TokenBackslash: "[backslash]",
-
-	TokenEOF: "[EOF]",
+	TokenInvalid:         "invalid",
+	TokenOpenList:        "open_list",
+	TokenCloseList:       "close_list",
+	TokenOpenMap:         "open_map",
+	TokenCloseMap:        "close_map",
+	TokenOpenExpression:  "open_expression",
+	TokenCloseExpression: "close_expression",
+	TokenNewLine:         "newline",
+	TokenDoubleQuote:     "double_quote",
+	TokenHash:            "hash",
+	TokenWhitespace:      "separator",
+	TokenWord:            "word",
+	TokenInteger:         "integer",
+	TokenColon:           "colon",
+	TokenDot:             "dot",
+	TokenBinary:          "binary",
+	TokenEOF:             "EOF",
 }
 
 func tokenName(tt TokenType) string {

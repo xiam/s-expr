@@ -9,20 +9,20 @@ var EOF = NewToken(TokenEOF, "", -1, -1)
 
 // Token represents a known sequence of characters (lexical unit)
 type Token struct {
-	tt   TokenType
-	text string
+	tt     TokenType
+	lexeme string
 
 	line int
 	col  int
 }
 
 // NewToken creates a lexical unit
-func NewToken(tt TokenType, text string, line int, col int) *Token {
+func NewToken(tt TokenType, lexeme string, line int, col int) *Token {
 	return &Token{
-		tt:   tt,
-		text: text,
-		line: line,
-		col:  col,
+		tt:     tt,
+		lexeme: lexeme,
+		line:   line,
+		col:    col,
 	}
 }
 
@@ -38,7 +38,7 @@ func (t Token) Pos() (int, int) {
 
 // Text returns the raw text of the lexical unit
 func (t Token) Text() string {
-	return t.text
+	return t.lexeme
 }
 
 // Is returns true if the token matches the given type
@@ -47,5 +47,5 @@ func (t Token) Is(tt TokenType) bool {
 }
 
 func (t Token) String() string {
-	return fmt.Sprintf("%q (%v) %d:%d", t.text, tokenName(t.tt), t.line, t.col)
+	return fmt.Sprintf("(:%v %q [%d %d])", tokenName(t.tt), t.lexeme, t.line, t.col)
 }
