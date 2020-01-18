@@ -8,7 +8,7 @@ import (
 )
 
 func TestStringNode(t *testing.T) {
-	value := &testStringValue{value: "AAAA"}
+	value := NewStringNode("AAA")
 	token := lexer.NewToken(lexer.TokenBinary, value.Value().(string), 1, 1)
 
 	node := New(token, value)
@@ -17,7 +17,7 @@ func TestStringNode(t *testing.T) {
 }
 
 func TestFloatNode(t *testing.T) {
-	value := &testFloatValue{value: 1.234}
+	value := NewFloatNode(1.234)
 	token := lexer.NewToken(lexer.TokenBinary, value.Encode(), 1, 1)
 
 	node := New(token, value)
@@ -26,7 +26,7 @@ func TestFloatNode(t *testing.T) {
 }
 
 func TestNodeList(t *testing.T) {
-	value := &testStringValue{value: "["}
+	value := NewStringNode("[")
 	token := lexer.NewToken(lexer.TokenOpenList, value.Value().(string), 1, 1)
 
 	list := NewList(token)
@@ -35,7 +35,7 @@ func TestNodeList(t *testing.T) {
 }
 
 func TestNodeMap(t *testing.T) {
-	value := &testStringValue{value: "{"}
+	value := NewStringNode("{")
 	token := lexer.NewToken(lexer.TokenOpenMap, value.Value().(string), 1, 1)
 
 	list := NewMap(token)
@@ -44,7 +44,7 @@ func TestNodeMap(t *testing.T) {
 }
 
 func TestNodeExpression(t *testing.T) {
-	value := &testStringValue{value: "("}
+	value := NewStringNode("(")
 	token := lexer.NewToken(lexer.TokenOpenExpression, value.Value().(string), 1, 1)
 
 	list := NewExpression(token)
