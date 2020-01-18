@@ -7,6 +7,7 @@ import (
 	"github.com/xiam/sexpr/lexer"
 )
 
+// Print displays a human-readable representation of a node
 func Print(n *Node) {
 	printLevel(n, 0)
 }
@@ -35,11 +36,12 @@ func printLevel(n *Node, level int) {
 	}
 }
 
-func Compile(n *Node) []byte {
-	return compileNodeLevel(n, 0)
+// Encode transform a node into text representation
+func Encode(n *Node) []byte {
+	return encodeNodeLevel(n, 0)
 }
 
-func compileNodeLevel(n *Node, level int) []byte {
+func encodeNodeLevel(n *Node, level int) []byte {
 	if n == nil {
 		return []byte(":nil")
 	}
@@ -47,21 +49,21 @@ func compileNodeLevel(n *Node, level int) []byte {
 	case NodeTypeMap:
 		nodes := []string{}
 		for i := range n.List() {
-			nodes = append(nodes, string(compileNodeLevel(n.List()[i], level+1)))
+			nodes = append(nodes, string(encodeNodeLevel(n.List()[i], level+1)))
 		}
 		return []byte(fmt.Sprintf("{%s}", strings.Join(nodes, " ")))
 
 	case NodeTypeList:
 		nodes := []string{}
 		for i := range n.List() {
-			nodes = append(nodes, string(compileNodeLevel(n.List()[i], level+1)))
+			nodes = append(nodes, string(encodeNodeLevel(n.List()[i], level+1)))
 		}
 		return []byte(fmt.Sprintf("[%s]", strings.Join(nodes, " ")))
 
 	case NodeTypeExpression:
 		nodes := []string{}
 		for i := range n.List() {
-			nodes = append(nodes, string(compileNodeLevel(n.List()[i], level+1)))
+			nodes = append(nodes, string(encodeNodeLevel(n.List()[i], level+1)))
 		}
 		if level == 0 {
 			return []byte(fmt.Sprintf("%s", strings.Join(nodes, " ")))

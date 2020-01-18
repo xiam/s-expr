@@ -116,7 +116,7 @@ func TestParserBuildTree(t *testing.T) {
 		assert.NotNil(t, root)
 
 		ast.Print(root)
-		s := ast.Compile(root)
+		s := ast.Encode(root)
 		log.Printf("compiled: %v", string(s))
 		log.Printf("tree: %#v", root)
 	}

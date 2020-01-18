@@ -16,10 +16,9 @@ var (
 	errUnexpectedToken = errors.New("unexpected token")
 )
 
-var TokenEOF = lexer.NewToken(lexer.TokenEOF, "", 0, 0)
-
 type parserState func(p *Parser) parserState
 
+// Parser represents a parser
 type Parser struct {
 	lx   *lexer.Lexer
 	root *ast.Node
@@ -30,6 +29,7 @@ type Parser struct {
 	lastErr error
 }
 
+// New creates a new parser that reads from the given input
 func New(r io.Reader) *Parser {
 	p := &Parser{}
 	p.root = ast.NewList(nil)
@@ -37,6 +37,7 @@ func New(r io.Reader) *Parser {
 	return p
 }
 
+// Parse tokenizes the input and transforms it into a AST
 func (p *Parser) Parse() error {
 	errCh := make(chan error)
 
@@ -65,7 +66,7 @@ func (p *Parser) read() *lexer.Token {
 	if ok {
 		return &tok
 	}
-	return TokenEOF
+	return lexer.EOF
 }
 
 func (p *Parser) peek() *lexer.Token {
@@ -106,7 +107,7 @@ func parserDefaultState(p *Parser) parserState {
 	return parserDefaultState
 }
 
-func ParserErrorState(err error) parserState {
+func parserErrorState(err error) parserState {
 	return func(p *Parser) parserState {
 		//p.lx.stop()
 		p.lastErr = err
@@ -188,22 +189,34 @@ func parserStateData(root *ast.Node) parserState {
 			}
 
 		case lexer.TokenOpenMap:
-			if state := parserStateOpenMap(root.PushMap(tok))(p); state != nil {
+			node, err := root.PushMap(tok)
+			if err != nil {
+				return parserErrorState(err)
+			}
+			if state := parserStateOpenMap(node)(p); state != nil {
 				return state
 			}
 
 		case lexer.TokenOpenList:
-			if state := parserStateOpenList(root.PushList(tok))(p); state != nil {
+			node, err := root.PushList(tok)
+			if err != nil {
+				return parserErrorState(err)
+			}
+			if state := parserStateOpenList(node)(p); state != nil {
 				return state
 			}
 
 		case lexer.TokenOpenExpression:
-			if state := parserStateOpenExpression(root.PushExpression(tok))(p); state != nil {
+			node, err := root.PushExpression(tok)
+			if err != nil {
+				return parserErrorState(err)
+			}
+			if state := parserStateOpenExpression(node)(p); state != nil {
 				return state
 			}
 
 		default:
-			return ParserErrorState(errUnexpectedToken)
+			return parserErrorState(errUnexpectedToken)
 		}
 
 		return nil
@@ -302,7 +315,7 @@ func parserStateString(root *ast.Node) parserState {
 				break loop
 
 			case lexer.TokenEOF:
-				return ParserErrorState(errUnexpectedEOF)
+				return parserErrorState(errUnexpectedEOF)
 
 			default:
 				tokens = append(tokens, tok)
@@ -324,7 +337,7 @@ func parserStateArgument(root *ast.Node) parserState {
 		case lexer.TokenInteger, lexer.TokenStar:
 			// ok
 		default:
-			return ParserErrorState(errUnexpectedToken)
+			return parserErrorState(errUnexpectedToken)
 		}
 
 		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, val))
@@ -337,9 +350,11 @@ func parserStateNumeric(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		node, err := expectIntegerNode(p)
 		if err != nil {
-			return ParserErrorState(err)
+			return parserErrorState(err)
 		}
-		root.AppendChild(node)
+		if err := root.Push(node); err != nil {
+			return parserErrorState(err)
+		}
 		return nil
 	}
 }
@@ -347,7 +362,9 @@ func parserStateNumeric(root *ast.Node) parserState {
 func parserStateWord(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		curr := p.curr()
-		root.Push(curr, curr.Text())
+		if _, err := root.PushValue(curr, curr.Text()); err != nil {
+			return parserErrorState(err)
+		}
 		return nil
 	}
 }
@@ -358,13 +375,14 @@ func parserStateValue(root *ast.Node) parserState {
 
 		atomName, err := expectTokens(p, lexer.TokenWord)
 		if err != nil {
-			return ParserErrorState(err)
+			return parserErrorState(err)
 		}
 
 		tok := mergeTokens(lexer.TokenLiteral, append([]*lexer.Token{curr}, atomName...))
 		node := ast.New(tok, tok.Text())
-		//ast.Value.Type = ValueTypeValue
-		root.AppendChild(node)
+		if err := root.Push(node); err != nil {
+			return parserErrorState(err)
+		}
 		return nil
 	}
 }
@@ -375,7 +393,7 @@ func parserStateOpenMap(root *ast.Node) parserState {
 
 		switch tok.Type() {
 		case lexer.TokenEOF:
-			return ParserErrorState(errUnexpectedEOF)
+			return parserErrorState(errUnexpectedEOF)
 
 		case lexer.TokenCloseMap:
 			return nil
@@ -396,7 +414,7 @@ func parserStateOpenExpression(root *ast.Node) parserState {
 
 		switch tok.Type() {
 		case lexer.TokenEOF:
-			return ParserErrorState(errUnexpectedEOF)
+			return parserErrorState(errUnexpectedEOF)
 
 		case lexer.TokenCloseExpression:
 			return nil
@@ -417,7 +435,7 @@ func parserStateOpenList(root *ast.Node) parserState {
 
 		switch tok.Type() {
 		case lexer.TokenEOF:
-			return ParserErrorState(errUnexpectedEOF)
+			return parserErrorState(errUnexpectedEOF)
 
 		case lexer.TokenCloseList:
 			return nil
@@ -432,6 +450,7 @@ func parserStateOpenList(root *ast.Node) parserState {
 	}
 }
 
+// Parse parses an array of bytes and returns a AST root
 func Parse(in []byte) (*ast.Node, error) {
 	p := New(bytes.NewReader(in))
 
@@ -443,7 +462,7 @@ func Parse(in []byte) (*ast.Node, error) {
 	return p.root, nil
 }
 
-func ParserError(err error, tok *lexer.Token) error {
+func parserError(err error, tok *lexer.Token) error {
 	log.Fatalf("%v: %v", err.Error(), tok)
 	return err
 }
