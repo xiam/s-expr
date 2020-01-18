@@ -9,7 +9,7 @@ import (
 
 func TestStringNode(t *testing.T) {
 	value := NewStringNode("AAA")
-	token := lexer.NewToken(lexer.TokenBinary, value.Value().(string), 1, 1)
+	token := lexer.NewToken(lexer.TokenSequence, value.Value().(string), 1, 1)
 
 	node := New(token, value)
 	_, err := node.PushValue(token, value)
@@ -18,7 +18,7 @@ func TestStringNode(t *testing.T) {
 
 func TestFloatNode(t *testing.T) {
 	value := NewFloatNode(1.234)
-	token := lexer.NewToken(lexer.TokenBinary, value.Encode(), 1, 1)
+	token := lexer.NewToken(lexer.TokenSequence, value.Encode(), 1, 1)
 
 	node := New(token, value)
 	_, err := node.PushValue(token, value)

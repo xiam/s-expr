@@ -16,18 +16,23 @@ func printLevel(n *Node, level int) {
 		return
 	}
 	indent := strings.Repeat("    ", level)
-	fmt.Printf("%s(%s): ", indent, n.Type())
+	fmt.Printf("%s(:%s ", indent, n.Type())
 	switch n.Type() {
-
 	case NodeTypeExpression, NodeTypeList, NodeTypeMap:
-		fmt.Printf("%v\n", n.Token())
+		tok := n.Token()
+		if tok == nil {
+			fmt.Printf("()\n")
+		} else {
+			fmt.Printf("%v\n", n.Token())
+		}
 		list := n.List()
 		for i := range list {
 			printLevel(list[i], level+1)
 		}
+		fmt.Printf("%s)\n", indent)
 
 	default:
-		fmt.Printf("%#v (%v)\n", n.Value(), n.Token())
+		fmt.Printf("%v)\n", n.Token())
 	}
 }
 

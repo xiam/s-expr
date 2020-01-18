@@ -1,6 +1,27 @@
 # sexpr
 
-S-expression lexer and parser.
+The `sexpr`package is a [s-expression][1] lexer and parser that
+analizes and convert s-expressions into trees.
+
+## S-Expressions
+
+...
+
+## Example
+
+```
+(fn 1 "A" :B C)
+```
+
+...
+
+## Token types
+
+...
+
+## AST
+
+...
 
 ## License
 
@@ -26,3 +47,5 @@ This project is licensed under the terms of the **MIT License**.
 > LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 > OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 > WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+[1]: https://en.wikipedia.org/wiki/S-expression

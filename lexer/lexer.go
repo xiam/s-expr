@@ -183,13 +183,13 @@ func lexDefaultState(lx *Lexer) lexState {
 		return lexEmit(TokenBackslash)
 
 	default:
-		return lexBinary
+		return lexSequence
 	}
 
 	panic("unreachable")
 }
 
-func lexBinary(lx *Lexer) lexState {
+func lexSequence(lx *Lexer) lexState {
 	for {
 		p := lx.peek()
 		if isWhitespace(p) || isNewLine(p) || isDoubleQuote(p) {
@@ -202,7 +202,7 @@ func lexBinary(lx *Lexer) lexState {
 			return lexStateError(err)
 		}
 	}
-	lx.emit(TokenBinary)
+	lx.emit(TokenSequence)
 	return lexDefaultState
 }
 

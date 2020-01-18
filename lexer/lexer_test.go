@@ -121,7 +121,7 @@ func TestTokenize(t *testing.T) {
 			`+
 			1`,
 			[]TokenType{
-				TokenBinary,
+				TokenSequence,
 				TokenNewLine,
 				TokenWhitespace,
 				TokenInteger,
@@ -134,7 +134,7 @@ func TestTokenize(t *testing.T) {
 			{}])`,
 			[]TokenType{
 				TokenOpenExpression,
-				TokenBinary,
+				TokenSequence,
 				TokenNewLine,
 				TokenWhitespace,
 				TokenOpenList,

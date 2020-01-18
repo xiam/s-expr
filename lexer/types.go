@@ -24,7 +24,7 @@ const (
 
 	TokenWord
 	TokenInteger
-	TokenBinary
+	TokenSequence
 
 	TokenColon
 	TokenDot
@@ -67,7 +67,7 @@ var tokenNames = map[TokenType]string{
 	TokenInteger:         "integer",
 	TokenColon:           "colon",
 	TokenDot:             "dot",
-	TokenBinary:          "binary",
+	TokenSequence:        "sequence",
 	TokenEOF:             "EOF",
 }
 
