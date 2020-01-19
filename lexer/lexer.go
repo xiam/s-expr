@@ -190,10 +190,12 @@ func lexDefaultState(lx *Lexer) lexState {
 }
 
 func lexSequence(lx *Lexer) lexState {
+loop:
 	for {
 		p := lx.peek()
-		if isWhitespace(p) || isNewLine(p) || isDoubleQuote(p) {
-			break
+		switch {
+		case isWhitespace(p), isNewLine(p), isDoubleQuote(p), isOpenList(p), isCloseList(p), isOpenExpression(p), isCloseExpression(p), isOpenMap(p), isCloseMap(p):
+			break loop
 		}
 		if _, err := lx.next(); err != nil {
 			if err == io.EOF {

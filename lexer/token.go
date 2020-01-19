@@ -39,5 +39,5 @@ func (t Token) Text() string {
 }
 
 func (t Token) String() string {
-	return fmt.Sprintf("(:%v %q [%d %d])", tokenName(t.tt), t.lexeme, t.line, t.col)
+	return fmt.Sprintf("(:%v %q [%d %d])", t.tt, t.lexeme, t.line, t.col)
 }

@@ -92,6 +92,10 @@ func TestScanner(t *testing.T) {
 		)`,
 
 		`(+ 1 2 3 4)`,
+
+		`(fn1 [:A "😊"])`,
+
+		`(fn1 {:robot 🤖})`,
 	}
 
 	{

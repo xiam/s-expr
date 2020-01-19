@@ -5,32 +5,24 @@ type TokenType uint8
 
 // List of types of lexical units
 const (
-	TokenInvalid TokenType = iota
-
-	TokenOpenList
-	TokenCloseList
-
-	TokenOpenMap
-	TokenCloseMap
-
-	TokenOpenExpression
-	TokenCloseExpression
-	TokenExpression
-
-	TokenNewLine
-	TokenDoubleQuote
-	TokenHash
-	TokenWhitespace
-
-	TokenWord
-	TokenInteger
-	TokenSequence
-
-	TokenColon
-	TokenDot
-	TokenBackslash
-
-	TokenEOF
+	TokenInvalid         TokenType = iota
+	TokenOpenExpression            // Open parenthesis: "["
+	TokenCloseExpression           // Close parenthesis: "]"
+	TokenOpenList                  // Open square bracket: "("
+	TokenCloseList                 // Close square bracker: ")"
+	TokenOpenMap                   // Open curly bracket: "{"
+	TokenCloseMap                  // Close curly bracker: "}"
+	TokenNewLine                   // Newline: "\n"
+	TokenDoubleQuote               // Double quote: '"'
+	TokenHash                      // Hash: "#"
+	TokenWhitespace                // Space, tab, linefeed or carriage return: \s\f\t\r
+	TokenWord                      // Letters ([a-zA-Z]) and underscore
+	TokenInteger                   // Integers
+	TokenSequence                  // Extended sequence
+	TokenColon                     // Colon: ":"
+	TokenDot                       // Dot: "."
+	TokenBackslash                 // Backslash: "\"
+	TokenEOF                       // End of file
 )
 
 var tokenValues = map[TokenType][]rune{
@@ -71,7 +63,7 @@ var tokenNames = map[TokenType]string{
 	TokenEOF:             "EOF",
 }
 
-func tokenName(tt TokenType) string {
+func (tt TokenType) String() string {
 	if v, ok := tokenNames[tt]; ok {
 		return v
 	}
