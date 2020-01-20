@@ -130,9 +130,8 @@ types:
 | `:[a-zA-Z][a-zA-Z0-9_]+`   | `atom`       | An alphanumeric word preceded by a column.            | `:hello`  |
 | `"`...`"`                  | `string`     | Any stream of bytes enclosed between double quotes.   | `"hello"` |
 
-Some types of nodes can branch out children nodes (*vector nodes*) and some
-other nodes can only hold values and not branch out any children (*value
-nodes*).
+Some nodes can branch out children (*vector nodes*) and some others can only
+hold values (*value nodes*).
 
 #### Example
 
@@ -236,7 +235,7 @@ func printIndentedTree(node *ast.Node, indentationLevel int) {
 }
 ```
 
-The example above will print a XML-like tree similar to:
+The example above prints a XML-like tree similar to:
 
 ```xml
 <list>
