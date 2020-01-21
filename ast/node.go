@@ -24,8 +24,8 @@ func newNode(nt NodeType, tok *lexer.Token, v interface{}) *Node {
 	}
 }
 
-// New creates and returns an orphaned node based on the given token
-func New(tok *lexer.Token, v Valuer) *Node {
+// NewNode creates and returns an orphaned node based on the given token
+func NewNode(tok *lexer.Token, v Valuer) *Node {
 	return newNode(v.Type(), tok, v)
 }
 
@@ -46,7 +46,7 @@ func NewList(tok *lexer.Token) *Node {
 
 // PushValue appends a new value to the node
 func (n *Node) PushValue(tok *lexer.Token, v Valuer) (*Node, error) {
-	node := New(tok, v)
+	node := NewNode(tok, v)
 	if err := n.Push(node); err != nil {
 		return nil, err
 	}

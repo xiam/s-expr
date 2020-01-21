@@ -240,7 +240,7 @@ func expectIntegerNode(p *Parser) (*ast.Node, error) {
 			return nil, err
 		}
 
-		return ast.New(tok, ast.NewFloatNode(f64)), nil
+		return ast.NewNode(tok, ast.NewFloatValue(f64)), nil
 
 	default:
 		// natural end for an integer
@@ -249,7 +249,7 @@ func expectIntegerNode(p *Parser) (*ast.Node, error) {
 			return nil, err
 		}
 
-		return ast.New(curr, ast.NewIntNode(i64)), nil
+		return ast.NewNode(curr, ast.NewIntValue(i64)), nil
 	}
 
 	panic("unreachable")
@@ -320,7 +320,7 @@ func parserStateString(root *ast.Node) parserState {
 		}
 
 		tok := mergeTokens(lexer.TokenSequence, tokens)
-		if err := root.Push(ast.New(tok, ast.NewStringNode(tok.Text()))); err != nil {
+		if err := root.Push(ast.NewNode(tok, ast.NewStringValue(tok.Text()))); err != nil {
 			return parserErrorState(err)
 		}
 		return nil
@@ -340,7 +340,7 @@ func parserStateArgument(root *ast.Node) parserState {
 		}
 
 		tok := mergeTokens(lexer.TokenSequence, append([]*lexer.Token{curr}, val))
-		_ = ast.New(tok, ast.NewStringNode(tok.Text()))
+		_ = ast.NewNode(tok, ast.NewStringValue(tok.Text()))
 		return nil
 	}
 }
@@ -361,7 +361,7 @@ func parserStateNumeric(root *ast.Node) parserState {
 func parserStateWord(root *ast.Node) parserState {
 	return func(p *Parser) parserState {
 		curr := p.curr()
-		if _, err := root.PushValue(curr, ast.NewSymbolNode(curr.Text())); err != nil {
+		if _, err := root.PushValue(curr, ast.NewSymbolValue(curr.Text())); err != nil {
 			return parserErrorState(err)
 		}
 		return nil
@@ -378,7 +378,7 @@ func parserStateAtom(root *ast.Node) parserState {
 		}
 
 		tok := mergeTokens(lexer.TokenSequence, append([]*lexer.Token{curr}, atomName...))
-		node := ast.New(tok, ast.NewAtomNode(tok.Text()))
+		node := ast.NewNode(tok, ast.NewAtomValue(tok.Text()))
 		if err := root.Push(node); err != nil {
 			return parserErrorState(err)
 		}

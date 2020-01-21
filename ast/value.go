@@ -48,28 +48,28 @@ func (n *nodeValue) Encode() string {
 	panic("unreachable")
 }
 
-// NewStringNode creates a node of type string and sets it to the given value
-func NewStringNode(v string) Valuer {
+// NewStringValue creates a node of type string and sets it to the given value
+func NewStringValue(v string) Valuer {
 	return newNodeValue(NodeTypeString, v)
 }
 
-// NewFloatNode creates a node of type float and sets it to the given value
-func NewFloatNode(v float64) Valuer {
+// NewFloatValue creates a node of type float and sets it to the given value
+func NewFloatValue(v float64) Valuer {
 	return newNodeValue(NodeTypeFloat, v)
 }
 
-// NewIntNode creates a node of type node and sets it to the given value
-func NewIntNode(v int64) Valuer {
+// NewIntValue creates a node of type node and sets it to the given value
+func NewIntValue(v int64) Valuer {
 	return newNodeValue(NodeTypeInt, v)
 }
 
-// NewAtomNode creates a node of type atom and sets it to the given value
-func NewAtomNode(v string) Valuer {
+// NewAtomValue creates a node of type atom and sets it to the given value
+func NewAtomValue(v string) Valuer {
 	return newNodeValue(NodeTypeAtom, v)
 }
 
-// NewSymbolNode creates a node of type symbol and sets it to the given value
-func NewSymbolNode(v string) Valuer {
+// NewSymbolValue creates a node of type symbol and sets it to the given value
+func NewSymbolValue(v string) Valuer {
 	return newNodeValue(NodeTypeSymbol, v)
 }
 
