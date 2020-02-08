@@ -2,9 +2,13 @@ package lexer
 
 import (
 	"bytes"
+	"fmt"
 	"io"
-	"log"
 	"text/scanner"
+)
+
+var (
+	ticket = struct{}{}
 )
 
 type lexState func(*Lexer) lexState
@@ -39,10 +43,11 @@ func New(r io.Reader) *Lexer {
 	}
 
 	return &Lexer{
-		in:     s.Init(r),
-		tokens: make(chan Token),
-		done:   make(chan struct{}),
-		buf:    []rune{},
+		in:       s.Init(r),
+		tickets:  make(chan struct{}),
+		scanning: make(chan struct{}),
+		tokens:   make(chan *Token),
+		buf:      []rune{},
 	}
 }
 
@@ -50,10 +55,15 @@ func New(r io.Reader) *Lexer {
 type Lexer struct {
 	in *scanner.Scanner
 
-	tokens chan Token
+	lastTok *Token
+	tokens  chan *Token
 
-	done    chan struct{}
+	tickets chan struct{}
+
+	scanning chan struct{}
+
 	lastErr error
+	closed  bool
 
 	buf []rune
 
@@ -62,31 +72,42 @@ type Lexer struct {
 	lines  int
 }
 
-// Tokens returns a channel that is going to receive tokens as soon as they are
-// detected.
-func (lx *Lexer) Tokens() chan Token {
-	return lx.tokens
+// Next sends a signal to the Scan method for it to continue scanning
+func (lx *Lexer) Next() bool {
+	if lx.closed {
+		return false
+	}
+
+	lx.tickets <- struct{}{}
+
+	tok, _ := <-lx.tokens
+	lx.lastTok = tok
+
+	if tok.tt == TokenEOF {
+		lx.closed = true
+	}
+
+	return true
 }
 
-func (lx *Lexer) stop() {
-	for {
-		select {
-		case <-lx.tokens:
-			// drain channel
-		default:
-			lx.done <- struct{}{}
-			close(lx.tokens)
-			return
-		}
-	}
+// Token returns the most recent scanned token
+func (lx *Lexer) Token() *Token {
+	return lx.lastTok
+}
+
+// Stop requests the Scan method to stop scanning
+func (lx *Lexer) Stop() {
+	lx.closed = true
+	close(lx.tickets)
+	close(lx.scanning)
 }
 
 // Scan starts scanning the reader for tokens.
 func (lx *Lexer) Scan() error {
 	for state := lexDefaultState; state != nil; {
 		select {
-		case <-lx.done:
-			return nil
+		case <-lx.scanning:
+			return ErrForceStopped
 		default:
 			state = state(lx)
 		}
@@ -96,13 +117,16 @@ func (lx *Lexer) Scan() error {
 		lx.emit(TokenEOF)
 	}
 
-	close(lx.tokens)
-
 	return lx.lastErr
 }
 
 func (lx *Lexer) emit(tt TokenType) {
-	lx.tokens <- Token{
+	_, ok := <-lx.tickets
+	if !ok {
+		return
+	}
+
+	tok := Token{
 		tt:     tt,
 		lexeme: string(lx.buf),
 
@@ -118,6 +142,8 @@ func (lx *Lexer) emit(tt TokenType) {
 		lx.start = 0
 		lx.offset = 0
 	}
+
+	lx.tokens <- &tok
 }
 
 func (lx *Lexer) peek() rune {
@@ -231,8 +257,7 @@ func lexCollectStream(tt TokenType) lexState {
 
 func lexStateError(err error) lexState {
 	return func(lx *Lexer) lexState {
-		log.Printf("lexer error: %v", err)
-		lx.lastErr = err
+		lx.lastErr = fmt.Errorf("read error: %v", err)
 		return nil
 	}
 }
@@ -246,8 +271,12 @@ func Tokenize(in []byte) ([]Token, error) {
 	lx := New(bytes.NewReader(in))
 
 	go func() {
-		for tok := range lx.tokens {
-			tokens = append(tokens, tok)
+		for lx.Next() {
+			tok := lx.Token()
+			if tok == nil {
+				break
+			}
+			tokens = append(tokens, *tok)
 		}
 		done <- struct{}{}
 	}()

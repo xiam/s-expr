@@ -2,21 +2,16 @@ package parser
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"io"
-	"log"
 	"strconv"
 
 	"github.com/xiam/sexpr/ast"
 	"github.com/xiam/sexpr/lexer"
 )
 
+// EOF represents the end of the file the parser is reading
 var EOF = lexer.NewToken(lexer.TokenEOF, "", -1, -1)
-
-var (
-	errUnexpectedEOF   = errors.New("unexpected EOF")
-	errUnexpectedToken = errors.New("unexpected token")
-)
 
 type parserState func(p *Parser) parserState
 
@@ -52,8 +47,8 @@ func (p *Parser) Parse() error {
 	}
 
 	err := <-errCh
-	if err != nil {
-		return err
+	if err != nil && err != lexer.ErrForceStopped {
+		return fmt.Errorf("lexer error: %v", err)
 	}
 
 	return p.lastErr
@@ -64,11 +59,11 @@ func (p *Parser) curr() *lexer.Token {
 }
 
 func (p *Parser) read() *lexer.Token {
-	tok, ok := <-p.lx.Tokens()
-	if ok {
-		return &tok
+	if ok := p.lx.Next(); !ok {
+		return EOF
 	}
-	return EOF
+
+	return p.lx.Token()
 }
 
 func (p *Parser) peek() *lexer.Token {
@@ -111,8 +106,22 @@ func parserDefaultState(p *Parser) parserState {
 
 func parserErrorState(err error) parserState {
 	return func(p *Parser) parserState {
-		//p.lx.stop()
-		p.lastErr = err
+		p.lx.Stop()
+
+		tok := p.curr()
+		if tok == nil {
+			p.lastErr = fmt.Errorf("syntax error: %w", err)
+			return nil
+		}
+
+		line, col := tok.Pos()
+		switch err {
+		case errUnexpectedToken:
+			p.lastErr = fmt.Errorf("syntax error: %w %q (around (line %v) (column %v))", err, tok.Text(), line, col)
+			return nil
+		}
+		// TODO: extract a code snippet around line and col
+		p.lastErr = fmt.Errorf("syntax error: %w (around (line: %v) (column %v))", err, line, col)
 		return nil
 	}
 }
@@ -459,9 +468,4 @@ func Parse(in []byte) (*ast.Node, error) {
 	}
 
 	return p.root, nil
-}
-
-func parserError(err error, tok *lexer.Token) error {
-	log.Fatalf("%v: %v", err.Error(), tok)
-	return err
 }

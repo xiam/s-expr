@@ -153,3 +153,54 @@ func TestParserBuildTree(t *testing.T) {
 		assert.Equal(t, testCases[i].Out, string(s))
 	}
 }
+
+func TestParserErrors(t *testing.T) {
+	testCases := []struct {
+		In  string
+		Err string
+	}{
+		{
+			In: `(1`,
+		},
+		{
+			In: `(}`,
+		},
+		{
+			In: `[}`,
+		},
+		{
+			In: `[)`,
+		},
+		{
+			In: `1 )}`,
+		},
+		{
+			In: `1 ](}`,
+		},
+		{
+			In: `({}{`,
+		},
+		{
+			In: `({/{`,
+		},
+		{
+			In: `+}`,
+		},
+		{
+			In: `{)}`,
+		},
+		{
+			In: `(1 2 3 4
+			(5 6 7 8
+			(4 6})
+			)`,
+		},
+	}
+
+	for i := range testCases {
+		root, err := Parse([]byte(testCases[i].In))
+		assert.Nil(t, root)
+		assert.Error(t, err)
+		t.Log(err)
+	}
+}
