@@ -150,3 +150,7 @@ func (n *Node) IsVector() bool {
 	}
 	return false
 }
+
+func (n *Node) Parent() *Node {
+	return n.p
+}

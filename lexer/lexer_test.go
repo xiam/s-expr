@@ -10,6 +10,8 @@ func TestScanner(t *testing.T) {
 	testCases := []string{
 		`1`,
 
+		`-1 -2.22`,
+
 		`+ 1 1 1 1`,
 
 		`[ [ [] ] [] []]`,
@@ -128,6 +130,16 @@ func TestTokenize(t *testing.T) {
 				TokenSequence,
 				TokenNewLine,
 				TokenWhitespace,
+				TokenInteger,
+				TokenEOF,
+			},
+		},
+		{
+			`-1.23`,
+			[]TokenType{
+				TokenSequence,
+				TokenInteger,
+				TokenSequence,
 				TokenInteger,
 				TokenEOF,
 			},
