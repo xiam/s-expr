@@ -198,6 +198,7 @@ func lexDefaultState(lx *Lexer) lexState {
 
 	case isWord(r):
 		return lexCollectStream(TokenWord)
+
 	case isInteger(r):
 		return lexCollectStream(TokenInteger)
 
@@ -209,10 +210,28 @@ func lexDefaultState(lx *Lexer) lexState {
 		return lexEmit(TokenBackslash)
 
 	default:
+		if isAritmeticSign(r) {
+			return lexNumeric
+		}
 		return lexSequence
 	}
 
 	panic("unreachable")
+}
+
+func lexNumeric(lx *Lexer) lexState {
+	p := lx.peek()
+	if !isInteger(p) {
+		return lexSequence
+	}
+	if _, err := lx.next(); err != nil {
+		if err != io.EOF {
+			return lexStateError(err)
+		}
+	}
+
+	lx.emit(TokenInteger)
+	return lexDefaultState
 }
 
 func lexSequence(lx *Lexer) lexState {

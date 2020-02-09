@@ -140,6 +140,10 @@ func TestParserBuildTree(t *testing.T) {
 			In:  `[+ 1 2 3 4]`,
 			Out: `[+ 1 2 3 4]`,
 		},
+		{
+			In:  `[+ -1 55 +6.3 +2 -3.23 4.01]`,
+			Out: `[+ -1 55 6.3 2 -3.23 4.01]`,
+		},
 	}
 
 	for i := range testCases {

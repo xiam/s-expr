@@ -80,3 +80,7 @@ func isTokenType(tt TokenType) func(r rune) bool {
 		return false
 	}
 }
+
+func isAritmeticSign(p rune) bool {
+	return p == '+' || p == '-'
+}

@@ -137,17 +137,16 @@ func TestTokenize(t *testing.T) {
 		{
 			`-1.23`,
 			[]TokenType{
-				TokenSequence,
 				TokenInteger,
-				TokenSequence,
+				TokenDot,
 				TokenInteger,
 				TokenEOF,
 			},
 		},
 		{
 			`(+
-			[1
-			{}])`,
+				[1
+				{}])`,
 			[]TokenType{
 				TokenOpenExpression,
 				TokenSequence,
