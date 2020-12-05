@@ -69,7 +69,7 @@ func encodeNodeLevel(n *Node, level int) []byte {
 			nodes = append(nodes, string(encodeNodeLevel(n.List()[i], level+1)))
 		}
 		if level == 0 {
-			return []byte(fmt.Sprintf("%s", strings.Join(nodes, " ")))
+			return []byte(strings.Join(nodes, " "))
 		}
 		return []byte(fmt.Sprintf("(%s)", strings.Join(nodes, " ")))
 

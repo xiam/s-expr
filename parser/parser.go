@@ -261,38 +261,6 @@ func expectIntegerNode(p *Parser) (*ast.Node, error) {
 
 		return ast.NewNode(curr, ast.NewIntValue(i64)), nil
 	}
-
-	panic("unreachable")
-}
-
-func expectString(p *Parser) (*lexer.Token, error) {
-	tokens := []*lexer.Token{}
-
-loop:
-	for {
-		tok := p.next()
-
-		switch tok.Type() {
-		case lexer.TokenDoubleQuote:
-			break loop
-		case lexer.TokenEOF:
-			return nil, errUnexpectedEOF
-		default:
-			tokens = append(tokens, tok)
-		}
-	}
-
-	return mergeTokens(lexer.TokenSequence, tokens), nil
-}
-
-func expectComment(p *Parser) (string, error) {
-	for {
-		tok := p.next()
-		switch tok.Type() {
-		case lexer.TokenNewLine, lexer.TokenEOF:
-			return "", nil
-		}
-	}
 }
 
 func parserStateComment(root *ast.Node) parserState {
@@ -333,24 +301,6 @@ func parserStateString(root *ast.Node) parserState {
 		if err := root.Push(ast.NewNode(tok, ast.NewStringValue(tok.Text()))); err != nil {
 			return parserErrorState(err)
 		}
-		return nil
-	}
-}
-
-func parserStateArgument(root *ast.Node) parserState {
-	return func(p *Parser) parserState {
-		curr := p.curr()
-
-		val := p.next()
-		switch val.Type() {
-		case lexer.TokenInteger:
-			// ok
-		default:
-			return parserErrorState(errUnexpectedToken)
-		}
-
-		tok := mergeTokens(lexer.TokenSequence, append([]*lexer.Token{curr}, val))
-		_ = ast.NewNode(tok, ast.NewStringValue(tok.Text()))
 		return nil
 	}
 }
