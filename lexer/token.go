@@ -2,6 +2,7 @@ package lexer
 
 import (
 	"fmt"
+	"text/scanner"
 )
 
 // Token represents a known sequence of characters (lexical unit)
@@ -9,17 +10,18 @@ type Token struct {
 	tt     TokenType
 	lexeme string
 
-	line int
-	col  int
+	pos scanner.Position
 }
 
 // NewToken creates a lexical unit
-func NewToken(tt TokenType, lexeme string, line int, col int) *Token {
+func NewToken(tt TokenType, lexeme string, pos *scanner.Position) *Token {
+	if pos == nil {
+		pos = &scanner.Position{}
+	}
 	return &Token{
 		tt:     tt,
 		lexeme: lexeme,
-		line:   line,
-		col:    col,
+		pos:    *pos,
 	}
 }
 
@@ -29,8 +31,8 @@ func (t Token) Type() TokenType {
 }
 
 // Pos returns the line and column of the lexical unit
-func (t Token) Pos() (int, int) {
-	return t.line, t.col
+func (t Token) Pos() scanner.Position {
+	return t.pos
 }
 
 // Text returns the raw text of the lexical unit
@@ -39,5 +41,5 @@ func (t Token) Text() string {
 }
 
 func (t Token) String() string {
-	return fmt.Sprintf("(:%v %q [%d %d])", t.tt, t.lexeme, t.line, t.col)
+	return fmt.Sprintf("(:%v %q [%d %d])", t.tt, t.lexeme, t.pos.Line, t.pos.Column)
 }
