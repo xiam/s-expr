@@ -7,10 +7,6 @@ import (
 	"text/scanner"
 )
 
-var (
-	ticket = struct{}{}
-)
-
 type lexState func(*Lexer) lexState
 
 var (
@@ -80,10 +76,8 @@ func (lx *Lexer) Next() bool {
 
 	lx.tickets <- struct{}{}
 
-	tok, _ := <-lx.tokens
-	lx.lastTok = tok
-
-	if tok.tt == TokenEOF {
+	lx.lastTok = <-lx.tokens
+	if lx.lastTok.tt == TokenEOF {
 		lx.closed = true
 	}
 
@@ -216,8 +210,6 @@ func lexDefaultState(lx *Lexer) lexState {
 		}
 		return lexSequence
 	}
-
-	panic("unreachable")
 }
 
 func lexNumeric(lx *Lexer) lexState {

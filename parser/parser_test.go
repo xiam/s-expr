@@ -210,6 +210,20 @@ func TestAutoCloseOnEOF(t *testing.T) {
 			In:  `(1 2 3 4 (5 6 7 8 (4 6) 7`,
 			Out: `(1 2 3 4 (5 6 7 8 (4 6) 7))`,
 		},
+		{
+			In: `(1 2 3 4
+			# hello world
+			(5 6 7 8 # a
+			# b
+			(4 6
+			# # c
+		`,
+			Out: `(1 2 3 4 (5 6 7 8 (4 6)))`,
+		},
+		{
+			In:  `(1 # a comment`,
+			Out: `(1)`,
+		},
 	}
 
 	for i := range testCases {

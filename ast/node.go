@@ -137,18 +137,12 @@ func (n *Node) Push(node *Node) error {
 
 // IsValue returns true if the node is of type value
 func (n *Node) IsValue() bool {
-	if n.nt&nodeTypeValue > 0 {
-		return true
-	}
-	return false
+	return n.nt&nodeTypeValue > 0
 }
 
 // IsVector returns true if the node is of type vector
 func (n *Node) IsVector() bool {
-	if n.nt&nodeTypeVector > 0 {
-		return true
-	}
-	return false
+	return n.nt&nodeTypeVector > 0
 }
 
 func (n *Node) Parent() *Node {
