@@ -1,5 +1,7 @@
 # sexpr [![GoDoc](https://godoc.org/github.com/xiam/sexpr?status.svg)](https://godoc.org/github.com/xiam/sexpr)
 
+<a href="https://github.com/xiam/sexpr/actions?query=workflow%3Aunit-tests"><img alt="xiam/sexpr unit tests status" src="https://github.com/xiam/sexpr/workflows/unit-tests/badge.svg"></a>
+
 The `sexpr` package is a Go library that provides a general purpose
 [S-expression][1] parser and a lexer. The lexer scans a stream of bytes for a
 finite set of patterns (tokens) and identifies lexemes, the parser takes those
