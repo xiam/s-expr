@@ -10,7 +10,6 @@ jobs:
       matrix:
         go-version: [1.13.x, 1.14.x, 1.15.x]
         os: [ubuntu-latest]
-        target: [test]
 
     runs-on: ${{ matrix.os }}
 
@@ -23,5 +22,5 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
-      - name: Execute main task
+      - name: Run tests
         run: go test -v ./...
