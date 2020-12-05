@@ -11,7 +11,7 @@ import (
 )
 
 // EOF represents the end of the file the parser is reading
-var EOF = lexer.NewToken(lexer.TokenEOF, "", -1, -1)
+var EOF = lexer.NewToken(lexer.TokenEOF, "", nil)
 
 type parserState func(p *Parser) parserState
 
@@ -114,7 +114,8 @@ func parserErrorState(err error) parserState {
 			return nil
 		}
 
-		line, col := tok.Pos()
+		pos := tok.Pos()
+		line, col := pos.Line, pos.Column
 		switch err {
 		case errUnexpectedToken:
 			p.lastErr = fmt.Errorf("syntax error: %w %q (around (line %v) (column %v))", err, tok.Text(), line, col)
@@ -137,8 +138,8 @@ func mergeTokens(tt lexer.TokenType, tokens []*lexer.Token) *lexer.Token {
 		text = text + tok.Text()
 	}
 
-	line, col := firstTok.Pos()
-	return lexer.NewToken(tt, text, line, col)
+	pos := firstTok.Pos()
+	return lexer.NewToken(tt, text, &pos)
 }
 
 func expectTokens(p *Parser, tt ...lexer.TokenType) ([]*lexer.Token, error) {
@@ -400,10 +401,7 @@ func parserStateOpenMap(root *ast.Node) parserState {
 		tok := p.next()
 
 		switch tok.Type() {
-		case lexer.TokenEOF:
-			return parserErrorState(errUnexpectedEOF)
-
-		case lexer.TokenCloseMap:
+		case lexer.TokenEOF, lexer.TokenCloseMap:
 			return nil
 
 		default:
@@ -421,10 +419,7 @@ func parserStateOpenExpression(root *ast.Node) parserState {
 		tok := p.next()
 
 		switch tok.Type() {
-		case lexer.TokenEOF:
-			return parserErrorState(errUnexpectedEOF)
-
-		case lexer.TokenCloseExpression:
+		case lexer.TokenEOF, lexer.TokenCloseExpression:
 			return nil
 
 		default:
@@ -442,10 +437,7 @@ func parserStateOpenList(root *ast.Node) parserState {
 		tok := p.next()
 
 		switch tok.Type() {
-		case lexer.TokenEOF:
-			return parserErrorState(errUnexpectedEOF)
-
-		case lexer.TokenCloseList:
+		case lexer.TokenEOF, lexer.TokenCloseList:
 			return nil
 
 		default:
