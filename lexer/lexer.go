@@ -126,13 +126,14 @@ func (lx *Lexer) emit(tt TokenType) {
 		return
 	}
 
-	tok := Token{
-		tt:     tt,
-		lexeme: string(lx.buf),
+	inPos := lx.in.Pos() // position of the scanner
 
-		col:  lx.start + 1,
-		line: lx.lines + 1,
+	pos := scanner.Position{
+		Column: inPos.Column - len(lx.buf), // beginning of the token
+		Line:   inPos.Line,
 	}
+
+	tok := NewToken(tt, string(lx.buf), &pos)
 
 	lx.start = lx.offset
 	lx.buf = lx.buf[0:0]
@@ -143,7 +144,7 @@ func (lx *Lexer) emit(tt TokenType) {
 		lx.offset = 0
 	}
 
-	lx.tokens <- &tok
+	lx.tokens <- tok
 }
 
 func (lx *Lexer) peek() rune {

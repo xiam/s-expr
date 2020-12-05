@@ -158,14 +158,75 @@ func TestParserBuildTree(t *testing.T) {
 	}
 }
 
+func TestAutoCloseOnEOF(t *testing.T) {
+	testCases := []struct {
+		In  string
+		Out string
+	}{
+		{
+			In:  `(`,
+			Out: `()`,
+		},
+		{
+			In:  `(1`,
+			Out: `(1)`,
+		},
+		{
+			In:  `(((`,
+			Out: `((()))`,
+		},
+		{
+			In:  `(((1 1 1`,
+			Out: `(((1 1 1)))`,
+		},
+		{
+			In:  `({`,
+			Out: `({})`,
+		},
+		{
+			In:  `(()`,
+			Out: `(())`,
+		},
+		{
+			In:  `((({{`,
+			Out: `((({{}})))`,
+		},
+		{
+			In:  `({}{`,
+			Out: `({} {})`,
+		},
+		{
+			In:  `({/{`,
+			Out: `({/ {}})`,
+		},
+		{
+			In: `(1 2 3 4
+			(5 6 7 8
+			(4 6
+		`,
+			Out: `(1 2 3 4 (5 6 7 8 (4 6)))`,
+		},
+		{
+			In:  `(1 2 3 4 (5 6 7 8 (4 6) 7`,
+			Out: `(1 2 3 4 (5 6 7 8 (4 6) 7))`,
+		},
+	}
+
+	for i := range testCases {
+		root, err := Parse([]byte(testCases[i].In))
+		assert.NotNil(t, root)
+		assert.NoError(t, err)
+
+		s := ast.Encode(root)
+		assert.Equal(t, testCases[i].Out, string(s))
+	}
+}
+
 func TestParserErrors(t *testing.T) {
 	testCases := []struct {
 		In  string
 		Err string
 	}{
-		{
-			In: `(1`,
-		},
 		{
 			In: `(}`,
 		},
@@ -180,12 +241,6 @@ func TestParserErrors(t *testing.T) {
 		},
 		{
 			In: `1 ](}`,
-		},
-		{
-			In: `({}{`,
-		},
-		{
-			In: `({/{`,
 		},
 		{
 			In: `+}`,

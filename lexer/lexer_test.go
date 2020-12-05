@@ -205,29 +205,34 @@ func TestColumnAndLines(t *testing.T) {
 		{
 			"\n\n\n\n",
 			[][2]int{
-				{1, 1},
-				{2, 1},
-				{3, 1},
-				{4, 1},
+				{2, 0},
+				{3, 0},
+				{4, 0},
+				{5, 0},
 				{5, 1},
 			},
 		},
 		{
 			"\n\n\nABCDF efgh\n",
 			[][2]int{
-				{1, 1},
-				{2, 1},
-				{3, 1},
-				{4, 1}, {4, 6}, {4, 7}, {4, 11},
+				{2, 0},
+				{3, 0},
+				{4, 0},
+				{4, 1}, {4, 6}, {4, 7},
+				{5, 0},
 				{5, 1},
 			},
 		},
 		{
-			"1\n\n\t\t23456",
+			"1\n\n\n\t\t23456",
 			[][2]int{
-				{1, 1}, {1, 2},
-				{2, 1},
-				{3, 1}, {3, 3}, {3, 8},
+				{1, 1}, // 1
+				{2, 0}, // \n
+				{3, 0}, // \n
+				{4, 0}, // \n
+				{4, 1}, // \t\t
+				{4, 3}, // 23456
+				{4, 8}, // EOF
 			},
 		},
 	}
@@ -235,7 +240,7 @@ func TestColumnAndLines(t *testing.T) {
 	getTokenPositions := func(tokens []Token) [][2]int {
 		ret := make([][2]int, 0, len(tokens))
 		for i := range tokens {
-			ret = append(ret, [2]int{tokens[i].line, tokens[i].col})
+			ret = append(ret, [2]int{tokens[i].Pos().Line, tokens[i].Pos().Column})
 		}
 		return ret
 	}
