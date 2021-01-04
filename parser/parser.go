@@ -132,7 +132,7 @@ func parserErrorState(err error) parserState {
 		pos := tok.Pos()
 		line, col := pos.Line, pos.Column
 		switch err {
-		case errUnexpectedToken:
+		case ErrUnexpectedToken:
 			p.lastErr = fmt.Errorf("syntax error: %w %q (around (line %v) (column %v))", err, tok.Text(), line, col)
 			return nil
 		}
@@ -162,10 +162,10 @@ func expectTokens(p *Parser, tt ...lexer.TokenType) ([]*lexer.Token, error) {
 	for i := range tt {
 		tok := p.next()
 		if tok.Type() == lexer.TokenEOF {
-			return nil, errUnexpectedEOF
+			return nil, ErrUnexpectedEOF
 		}
 		if tok.Type() != tt[i] {
-			return nil, errUnexpectedToken
+			return nil, ErrUnexpectedToken
 		}
 		tokens = append(tokens, tok)
 	}
@@ -238,7 +238,7 @@ func parserStateData(root *ast.Node) parserState {
 			}
 
 		default:
-			return parserErrorState(errUnexpectedToken)
+			return parserErrorState(ErrUnexpectedToken)
 		}
 
 		return nil
@@ -305,7 +305,7 @@ func parserStateString(root *ast.Node) parserState {
 				break loop
 
 			case lexer.TokenEOF:
-				return parserErrorState(errUnexpectedEOF)
+				return parserErrorState(ErrUnexpectedEOF)
 
 			default:
 				tokens = append(tokens, tok)
@@ -370,7 +370,7 @@ func parserStateOpenMap(root *ast.Node) parserState {
 			if p.options.AutoCloseOnEOF {
 				return nil
 			}
-			return parserErrorState(errUnexpectedEOF)
+			return parserErrorState(ErrUnexpectedEOF)
 		case lexer.TokenCloseMap:
 			return nil
 
@@ -393,7 +393,7 @@ func parserStateOpenExpression(root *ast.Node) parserState {
 			if p.options.AutoCloseOnEOF {
 				return nil
 			}
-			return parserErrorState(errUnexpectedEOF)
+			return parserErrorState(ErrUnexpectedEOF)
 
 		case lexer.TokenCloseExpression:
 			return nil
@@ -417,7 +417,7 @@ func parserStateOpenList(root *ast.Node) parserState {
 			if p.options.AutoCloseOnEOF {
 				return nil
 			}
-			return parserErrorState(errUnexpectedEOF)
+			return parserErrorState(ErrUnexpectedEOF)
 
 		case lexer.TokenCloseList:
 			return nil

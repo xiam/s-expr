@@ -212,6 +212,10 @@ func TestAutoCloseOnEOF(t *testing.T) {
 			Out: `(1 2 3 4 (5 6 7 8 (4 6) 7))`,
 		},
 		{
+			In:  `(*`,
+			Out: `(*)`,
+		},
+		{
 			In: `(1 2 3 4
 			# hello world
 			(5 6 7 8 # a

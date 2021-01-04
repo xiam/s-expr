@@ -5,6 +5,6 @@ import (
 )
 
 var (
-	errUnexpectedEOF   = errors.New("unexpected EOF")
-	errUnexpectedToken = errors.New("unexpected token")
+	ErrUnexpectedEOF   = errors.New("unexpected EOF")
+	ErrUnexpectedToken = errors.New("unexpected token")
 )
