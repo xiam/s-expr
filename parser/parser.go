@@ -23,15 +23,30 @@ type Parser struct {
 	lastTok *lexer.Token
 	nextTok *lexer.Token
 
+	options ParserOptions
+
 	lastErr error
 }
 
 // New creates a new parser that reads from the given input
-func New(r io.Reader) *Parser {
-	p := &Parser{}
-	p.root = ast.NewList(nil)
-	p.lx = lexer.New(r)
-	return p
+func NewParser(r io.Reader) *Parser {
+	return &Parser{
+		root:    ast.NewList(nil),
+		lx:      lexer.New(r),
+		options: parserDefaultOptions,
+	}
+}
+
+func (p *Parser) SetOptions(options ParserOptions) {
+	p.options = options
+}
+
+func (p *Parser) Options() ParserOptions {
+	return p.options
+}
+
+func (p *Parser) RootNode() *ast.Node {
+	return p.root
 }
 
 // Parse tokenizes the input and transforms it into a AST
@@ -351,7 +366,12 @@ func parserStateOpenMap(root *ast.Node) parserState {
 		tok := p.next()
 
 		switch tok.Type() {
-		case lexer.TokenEOF, lexer.TokenCloseMap:
+		case lexer.TokenEOF:
+			if p.options.AutoCloseOnEOF {
+				return nil
+			}
+			return parserErrorState(errUnexpectedEOF)
+		case lexer.TokenCloseMap:
 			return nil
 
 		default:
@@ -369,7 +389,13 @@ func parserStateOpenExpression(root *ast.Node) parserState {
 		tok := p.next()
 
 		switch tok.Type() {
-		case lexer.TokenEOF, lexer.TokenCloseExpression:
+		case lexer.TokenEOF:
+			if p.options.AutoCloseOnEOF {
+				return nil
+			}
+			return parserErrorState(errUnexpectedEOF)
+
+		case lexer.TokenCloseExpression:
 			return nil
 
 		default:
@@ -387,7 +413,13 @@ func parserStateOpenList(root *ast.Node) parserState {
 		tok := p.next()
 
 		switch tok.Type() {
-		case lexer.TokenEOF, lexer.TokenCloseList:
+		case lexer.TokenEOF:
+			if p.options.AutoCloseOnEOF {
+				return nil
+			}
+			return parserErrorState(errUnexpectedEOF)
+
+		case lexer.TokenCloseList:
 			return nil
 
 		default:
@@ -402,7 +434,7 @@ func parserStateOpenList(root *ast.Node) parserState {
 
 // Parse parses an array of bytes and returns a AST root
 func Parse(in []byte) (*ast.Node, error) {
-	p := New(bytes.NewReader(in))
+	p := NewParser(bytes.NewReader(in))
 
 	err := p.Parse()
 	if err != nil {

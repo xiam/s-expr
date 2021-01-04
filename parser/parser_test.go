@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -227,12 +228,25 @@ func TestAutoCloseOnEOF(t *testing.T) {
 	}
 
 	for i := range testCases {
-		root, err := Parse([]byte(testCases[i].In))
-		assert.NotNil(t, root)
-		assert.NoError(t, err)
+		{
+			p := NewParser(strings.NewReader(testCases[i].In))
+			err := p.Parse()
+			assert.Error(t, err)
+		}
 
-		s := ast.Encode(root)
-		assert.Equal(t, testCases[i].Out, string(s))
+		{
+			p := NewParser(strings.NewReader(testCases[i].In))
+			p.SetOptions(ParserOptions{
+				AutoCloseOnEOF: true,
+			})
+
+			err := p.Parse()
+			assert.NotNil(t, p.root)
+			assert.NoError(t, err)
+
+			s := ast.Encode(p.root)
+			assert.Equal(t, testCases[i].Out, string(s))
+		}
 	}
 }
 
