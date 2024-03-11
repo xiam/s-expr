@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/xiam/sexpr/lexer"
+	"github.com/xiam/s-expr/lexer"
 )
 
 // Node represents leaf of the AST

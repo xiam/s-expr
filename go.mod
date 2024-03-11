@@ -1,4 +1,4 @@
-module github.com/xiam/sexpr
+module github.com/xiam/s-expr
 
 go 1.15
 

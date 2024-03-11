@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/xiam/sexpr/lexer"
+	"github.com/xiam/s-expr/lexer"
 )
 
 func TestStringNode(t *testing.T) {

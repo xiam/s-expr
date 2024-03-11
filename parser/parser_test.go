@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/xiam/sexpr/ast"
+	"github.com/xiam/s-expr/ast"
 )
 
 func TestParserBuildTree(t *testing.T) {

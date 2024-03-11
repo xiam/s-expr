@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/xiam/sexpr/lexer"
+	"github.com/xiam/s-expr/lexer"
 )
 
 func main() {

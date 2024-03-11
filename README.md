@@ -1,6 +1,6 @@
-# sexpr [![GoDoc](https://godoc.org/github.com/xiam/sexpr?status.svg)](https://godoc.org/github.com/xiam/sexpr)
+# sexpr [![GoDoc](https://godoc.org/github.com/xiam/s-expr?status.svg)](https://godoc.org/github.com/xiam/s-expr)
 
-<a href="https://github.com/xiam/sexpr/actions?query=workflow%3Aunit-tests"><img alt="xiam/sexpr unit tests status" src="https://github.com/xiam/sexpr/workflows/unit-tests/badge.svg"></a>
+<a href="https://github.com/xiam/s-expr/actions?query=workflow%3Aunit-tests"><img alt="xiam/s-expr unit tests status" src="https://github.com/xiam/s-expr/workflows/unit-tests/badge.svg"></a>
 
 The `sexpr` package is a Go library that provides a general purpose
 [S-expression][1] parser and a lexer. The lexer scans a stream of bytes for a
@@ -84,7 +84,7 @@ package main
 import (
   ...
 
-  "github.com/xiam/sexpr/lexer"
+  "github.com/xiam/s-expr/lexer"
 )
 
 func main() {
@@ -143,8 +143,8 @@ package main
 import (
   ...
 
-  "github.com/xiam/sexpr/ast"
-  "github.com/xiam/sexpr/parser"
+  "github.com/xiam/s-expr/ast"
+  "github.com/xiam/s-expr/parser"
 )
 
 func main() {
@@ -274,6 +274,6 @@ The example above prints a XML-like tree similar to:
 
 [1]: https://en.wikipedia.org/wiki/S-expression
 [2]: https://en.wikipedia.org/wiki/Abstract_syntax_tree
-[3]: https://godoc.org/github.com/xiam/sexpr/lexer#TokenType
-[4]: https://godoc.org/github.com/xiam/sexpr/ast#pkg-constants
+[3]: https://godoc.org/github.com/xiam/s-expr/lexer#TokenType
+[4]: https://godoc.org/github.com/xiam/s-expr/ast#pkg-constants
 [5]: https://en.wikipedia.org/wiki/Parse_tree#Constituency-based_parse_trees

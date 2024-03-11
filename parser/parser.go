@@ -6,8 +6,8 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/xiam/sexpr/ast"
-	"github.com/xiam/sexpr/lexer"
+	"github.com/xiam/s-expr/ast"
+	"github.com/xiam/s-expr/lexer"
 )
 
 // EOF represents the end of the file the parser is reading

@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/xiam/sexpr/ast"
-	"github.com/xiam/sexpr/parser"
+	"github.com/xiam/s-expr/ast"
+	"github.com/xiam/s-expr/parser"
 )
 
 func main() {
